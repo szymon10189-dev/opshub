@@ -1,0 +1,399 @@
+﻿<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>OpsHub — Icinga & Karma</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="obsidian" data-view="compact" data-hide-source="false" data-hide-status="false">
+  <div class="app-layout">
+    
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="brand-group">
+        <div class="live-dot" title="Monitoring aktywny"></div>
+        <div class="brand-text">
+          <h1>OpsHub</h1>
+          <span class="sub-badge">Icinga &bull; Karma</span>
+        </div>
+      </div>
+
+      <!-- Telemetria NOC (Pigułki filtrów wraz z ACKED oraz DT) -->
+      <div class="stats-pills">
+        <div class="stat-pill stat-crit" id="stat-crit-wrap" title="Kliknij, aby filtrować tylko CRIT">
+          <span class="stat-indicator"></span>
+          <span class="stat-label">CRIT</span>
+          <strong id="stat-crit-val">0</strong>
+        </div>
+        <div class="stat-pill stat-warn" id="stat-warn-wrap" title="Kliknij, aby filtrować tylko WARN">
+          <span class="stat-indicator"></span>
+          <span class="stat-label">WARN</span>
+          <strong id="stat-warn-val">0</strong>
+        </div>
+        <div class="stat-pill stat-unknown" id="stat-unknown-wrap" title="Kliknij, aby filtrować tylko UNKNOWN">
+          <span class="stat-indicator"></span>
+          <span class="stat-label">UNKNOWN</span>
+          <strong id="stat-unknown-val">0</strong>
+        </div>
+        <div class="stat-pill stat-acked" id="stat-acked-wrap" title="Kliknij, aby wyświetlić zaackowane alerty z Icingi (ACK)">
+          <span class="stat-indicator"></span>
+          <span class="stat-label">ACKED</span>
+          <strong id="stat-acked-val">0</strong>
+        </div>
+        <div class="stat-pill stat-dt" id="stat-dt-wrap" title="Kliknij, aby wyświetlić alerty w oknie prac (Downtime)">
+          <span class="stat-indicator"></span>
+          <span class="stat-label">DT</span>
+          <strong id="stat-dt-val">0</strong>
+        </div>
+        <div class="stat-pill stat-karma" id="stat-karma-wrap" title="Kliknij, aby filtrować tylko KARMA">
+          <span class="stat-label">KARMA</span>
+          <strong id="stat-karma-val">0</strong>
+        </div>
+        <div class="stat-pill stat-icinga" id="stat-icinga-wrap" title="Kliknij, aby filtrować tylko ICINGA">
+          <span class="stat-label">ICINGA</span>
+          <strong id="stat-icinga-val">0</strong>
+        </div>
+      </div>
+
+      <!-- Narzędzia i motywy -->
+      <div class="top-actions">
+        <div class="view-switch-group">
+          <button id="btn-view-compact" class="btn-toggle active" title="Widok gęsty (Nagstamon)">☰ Gęsty</button>
+          <button id="btn-view-cards" class="btn-toggle" title="Widok szczegółowy (Karty)">🗂️ Karty</button>
+        </div>
+
+        <div class="theme-select-container">
+          <span class="theme-icon">🎨</span>
+          <select id="theme-select" class="theme-dropdown" title="Wybierz motyw interfejsu">
+            <option value="obsidian">Jakiś ciemny</option>
+            <option value="monokai">Bardziej ciemny</option>
+            <option value="daylight">Jakiś jasny</option>
+            <option value="amethyst">Fioletowy</option>
+            <option value="nord">Niebieski</option>
+            <option value="custom">Własny</option>
+          </select>
+          <button id="btn-open-custom-theme" class="btn-palette" title="Edytor własnego motywu">⚙️</button>
+        </div>
+
+        <button id="btn-refresh" class="btn btn-ghost" title="Odśwież dane">🔄 <span>Odśwież</span></button>
+        <button id="btn-import-handover" class="btn btn-ghost" title="Odbiór dyżuru (Wklej handover od zmiennika)">📥 <span>Import</span></button>
+        <button id="btn-export-handover" class="btn btn-ghost" title="Przekazanie dyżuru (Kopiuj wyciszone alerty z notatkami)">📤 <span>Eksport</span></button>
+
+        <div class="sso-dropdown-group">
+          <button id="btn-login" class="btn btn-primary" title="Logowanie Icinga">SSO Icinga</button>
+          <button id="btn-login-karma" class="btn btn-secondary" title="Logowanie Karma">SSO Karma</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Kontrolki i filtry z menu rozwijanym Opcji -->
+    <section class="control-bar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Szukaj (wspiera regex i negację, np. !reboot, bastion !load)" autocomplete="off" />
+        <span class="shortcut-hint">/</span>
+      </div>
+
+      <div class="filter-group">
+        <div class="tab-filters">
+          <button class="tab-btn active" data-filter="all">Wszystkie</button>
+          <button class="tab-btn" data-filter="karma">⚡ Karma</button>
+          <button class="tab-btn" data-filter="icinga">🌐 Icinga</button>
+        </div>
+
+        <div class="dropdown-options-wrap">
+          <button id="btn-toggle-options-menu" class="btn btn-ghost btn-options-menu" title="Ustawienia widoku i filtrów">
+            ⚙️ <span>Opcje widoku</span> ▾
+          </button>
+
+          <div id="options-dropdown-menu" class="options-dropdown-panel hidden">
+            <div class="dropdown-header">Filtry widoku</div>
+            <label class="dropdown-checkbox-item" title="Zwija wiele alertów dla tego samego hosta w jeden wiersz">
+              <input type="checkbox" id="group-hosts-checkbox" />
+              <span>Grupuj wg hosta</span>
+            </label>
+            <label class="dropdown-checkbox-item" title="Chowa plakietki [ICINGA] i [KARMA]">
+              <input type="checkbox" id="hide-source-checkbox" />
+              <span>Ukryj źródła</span>
+            </label>
+            <label class="dropdown-checkbox-item" title="Chowa plakietki [CRIT], [WARN] i [UNKNOWN]">
+              <input type="checkbox" id="hide-status-checkbox" />
+              <span>Ukryj status</span>
+            </label>
+            <label class="dropdown-checkbox-item" title="Ukrywa pozycje wyciszone lokalnie">
+              <input type="checkbox" id="hide-done-checkbox" />
+              <span>Ukryj wyciszone</span>
+            </label>
+            <div class="dropdown-divider"></div>
+            <button id="btn-clear-done" class="btn btn-subtle-danger" title="Czyści wyciszenia z pamięci">
+              🗑️ Wyczyść wyciszenia (Done)
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Nagłówek tabeli z resizerami Excela -->
+    <div class="table-header-row" id="compact-header">
+      <div class="col-cell col-check-cell">
+        <input type="checkbox" id="select-all-checkbox" title="Zaznacz / Odznacz wszystkie widoczne" />
+      </div>
+      <div class="col-cell col-sortable" data-sort="state">
+        <span>Status</span> <span class="sort-indicator" id="sort-state-icon">▼</span>
+        <div class="col-resizer" data-col="status" title="Przeciągnij, aby zmienić szerokość"></div>
+      </div>
+      <div class="col-cell col-sortable" data-sort="duration">
+        <span>Czas</span> <span class="sort-indicator" id="sort-duration-icon"></span>
+        <div class="col-resizer" data-col="time" title="Przeciągnij, aby zmienić szerokość"></div>
+      </div>
+      <div class="col-cell col-sortable" data-sort="host">
+        <span>Host / Instancja</span> <span class="sort-indicator" id="sort-host-icon"></span>
+        <div class="col-resizer" data-col="host" title="Przeciągnij, aby zmienić szerokość"></div>
+      </div>
+      <div class="col-cell col-sortable" data-sort="service">
+        <span>Usługa / Alert</span> <span class="sort-indicator" id="sort-service-icon"></span>
+        <div class="col-resizer" data-col="service" title="Przeciągnij, aby zmienić szerokość"></div>
+      </div>
+      <div class="col-cell col-output-cell">
+        <span>Błąd / Wyjście monitoringu</span>
+      </div>
+      <div class="col-cell col-actions-cell">Akcje</div>
+    </div>
+
+    <!-- Lista alertów -->
+    <main class="content-area">
+      <div id="alerts-list" class="alerts-container">
+        <div class="empty-placeholder">⏳ Pobieranie alertów...</div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- PŁYWAJĄCY PASEK AKCJI MASOWYCH -->
+  <div id="bulk-action-bar" class="bulk-action-bar hidden">
+    <div class="bulk-info">
+      <span>Wybrano: <strong id="bulk-selected-count">0</strong></span>
+    </div>
+    <div class="bulk-buttons">
+      <button id="btn-bulk-copy-hs" class="btn btn-card" title="Kopiuj zaznaczone alerty w formacie: host - service">
+        📋 Kopiuj H - S
+      </button>
+      <button id="btn-bulk-recheck" class="btn btn-card" title="Zleć ponowne sprawdzenie dla zaznaczonych pozycji Icingi">
+        🔄 Recheck (<span class="bulk-count-num">0</span>)
+      </button>
+      <button id="btn-bulk-refresh" class="btn btn-card" title="Odśwież monitoring teraz">
+        ⚡ Refresh
+      </button>
+      <button id="btn-bulk-ack" class="btn btn-card btn-danger" title="Potwierdź zaznaczone alerty (Acknowledge)">
+        💬 Ack (<span class="bulk-count-num">0</span>)
+      </button>
+      <button id="btn-bulk-unack" class="btn btn-card btn-warning hidden" title="Zdejmij potwierdzenie z zaznaczonych alertów (Unack)">
+        🔓 Unack (<span class="bulk-count-num">0</span>)
+      </button>
+      <button id="btn-bulk-dt" class="btn btn-card btn-dt-action" title="Zaplanuj Downtime dla zaznaczonych pozycji Icingi">
+        ⏳ DT (<span class="bulk-count-num">0</span>)
+      </button>
+      <button id="btn-bulk-remove-dt" class="btn btn-card btn-dt-action hidden" title="Zdejmij Downtime dla zaznaczonych pozycji">
+        🛑 Remove DT (<span class="bulk-count-num">0</span>)
+      </button>
+      <button id="btn-bulk-done" class="btn btn-card btn-done-action" title="Wycisz lokalnie zaznaczone pozycje z notatką">
+        ✔️ Done (<span class="bulk-count-num">0</span>)
+      </button>
+      <button id="btn-bulk-undone" class="btn btn-card btn-undone-action" title="Cofnij lokalne wyciszenie zaznaczonych pozycji">
+        ↩️ Undone (<span class="bulk-count-num">0</span>)
+      </button>
+      <button id="btn-bulk-copy-notes" class="btn btn-card" title="Kopiuj notatki zaznaczonych alertów">
+        📝 Kopiuj notatki
+      </button>
+      <button id="btn-bulk-clear" class="btn btn-subtle" title="Wyczyść zaznaczenie">✖ Odznacz</button>
+    </div>
+  </div>
+
+  <!-- Pływające powiadomienie Toast po skopiowaniu -->
+  <div id="copy-toast" class="toast-notification hidden">Skopiowano do schowka!</div>
+
+  <!-- Modal Downtime -->
+  <div id="modal-downtime" class="modal-backdrop hidden">
+    <div class="modal-window glass-panel">
+      <div class="modal-head">
+        <h3 id="dt-modal-title">⏳ Zaplanuj Downtime</h3>
+        <span class="modal-close" onclick="document.getElementById('modal-downtime').classList.add('hidden')">&times;</span>
+      </div>
+      <p id="dt-target-label" class="target-chip">Host &rsaquo; Service</p>
+
+      <label class="modal-label">Czas trwania okna prac:</label>
+      <div class="dt-time-selector-row">
+        <select id="dt-preset-select" class="modal-input" style="flex: 1;">
+          <option value="30">30 minut</option>
+          <option value="60" selected>1 godzina</option>
+          <option value="120">2 godziny</option>
+          <option value="240">4 godziny</option>
+          <option value="480">8 godzin</option>
+          <option value="1440">24 godziny (1 dzień)</option>
+          <option value="until_7am">🌅 Wycisz do 7:00 rano</option>
+          <option value="calendar">📅 Dokładna data i czas (kalendarz)</option>
+          <option value="custom">⏱️ Własne minuty</option>
+        </select>
+        <input type="number" id="dt-custom-minutes" class="modal-input" style="width: 110px;" placeholder="Minuty..." min="5" value="60" />
+      </div>
+
+      <div id="dt-calendar-wrap" class="dt-calendar-row" style="margin-top: 6px;">
+        <label class="modal-label" style="font-size: 11px;">Koniec okna serwisowego (data i godzina — przeliczana na bieżąco):</label>
+        <input type="datetime-local" id="dt-calendar-input" class="modal-input" />
+      </div>
+
+      <label class="modal-label" style="margin-top: 6px;">Komentarz / Numer zgłoszenia:</label>
+      <input type="text" id="dt-comment-input" class="modal-input" placeholder="np. INC-8291, prace serwisowe, certyfikat..." />
+      
+      <div class="modal-actions">
+        <button id="btn-cancel-dt-modal" class="btn btn-ghost">Anuluj</button>
+        <button id="btn-save-dt-modal" class="btn btn-primary">Zaplanuj Downtime</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Done -->
+  <div id="modal-done" class="modal-backdrop hidden">
+    <div class="modal-window glass-panel">
+      <div class="modal-head">
+        <h3 id="done-modal-title">✔️ Wyciszenie lokalne (Done)</h3>
+        <span class="modal-close" onclick="document.getElementById('modal-done').classList.add('hidden')">&times;</span>
+      </div>
+      <p id="done-target-label" class="target-chip">Host &rsaquo; Service</p>
+      <label class="modal-label">Komentarz / powód wyciszenia (widoczny w alercie i kopiowalny):</label>
+      <input type="text" id="done-comment-input" class="modal-input" placeholder="np. INC-4029 w trakcie prac, restart o 14:00..." />
+      <div class="modal-actions">
+        <button id="btn-cancel-done-modal" class="btn btn-ghost">Anuluj</button>
+        <button id="btn-save-done-modal" class="btn btn-done-action">Zapisz i wycisz</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Acknowledge -->
+  <div id="modal-ack" class="modal-backdrop hidden">
+    <div class="modal-window glass-panel">
+      <div class="modal-head">
+        <h3 id="ack-modal-title">Potwierdzenie problemu (Acknowledge)</h3>
+        <span class="modal-close" onclick="document.getElementById('modal-ack').classList.add('hidden')">&times;</span>
+      </div>
+      <p id="ack-target-label" class="target-chip">Host &rsaquo; Service</p>
+      <label class="modal-label">Komentarz dyżurnego:</label>
+      <input type="text" id="ack-comment-input" class="modal-input" placeholder="Wpisz treść akcji..." />
+      
+      <label class="checkbox-pill" style="margin-top: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+        <input type="checkbox" id="ack-persistent-checkbox" checked />
+        <span style="font-size: 11px; font-weight: 600;">Trwały komentarz (Persistent comment)</span>
+      </label>
+
+      <div class="modal-actions">
+        <button id="btn-cancel-ack" class="btn btn-ghost">Anuluj</button>
+        <button id="btn-save-ack" class="btn btn-danger">Zatwierdź Ack</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Własnego Motywu -->
+  <div id="modal-custom-theme" class="modal-backdrop hidden">
+    <div class="modal-window glass-panel theme-creator-window">
+      <div class="modal-head">
+        <h3>🎨 Własny motyw</h3>
+        <span class="modal-close" onclick="document.getElementById('modal-custom-theme').classList.add('hidden')">&times;</span>
+      </div>
+      <p class="modal-desc">Dostosuj paletę barw lub wklej ciąg heksów.</p>
+
+      <div class="theme-grid-pickers">
+        <div class="picker-item">
+          <label>Tło aplikacji:</label>
+          <div class="picker-input-wrap">
+            <input type="color" id="picker-bg-app" value="#0b0c0e">
+            <span id="label-bg-app">#0b0c0e</span>
+          </div>
+        </div>
+        <div class="picker-item">
+          <label>Tło wierszy / kart:</label>
+          <div class="picker-input-wrap">
+            <input type="color" id="picker-bg-card" value="#15181c">
+            <span id="label-bg-card">#15181c</span>
+          </div>
+        </div>
+        <div class="picker-item">
+          <label>Kolor tekstu:</label>
+          <div class="picker-input-wrap">
+            <input type="color" id="picker-text" value="#f1f3f5">
+            <span id="label-text">#f1f3f5</span>
+          </div>
+        </div>
+        <div class="picker-item">
+          <label>Kolor Critical:</label>
+          <div class="picker-input-wrap">
+            <input type="color" id="picker-crit" value="#fa5252">
+            <span id="label-crit">#fa5252</span>
+          </div>
+        </div>
+        <div class="picker-item">
+          <label>Kolor Warning:</label>
+          <div class="picker-input-wrap">
+            <input type="color" id="picker-warn" value="#fd7e14">
+            <span id="label-warn">#fd7e14</span>
+          </div>
+        </div>
+        <div class="picker-item">
+          <label>Kolor Karma (K8s):</label>
+          <div class="picker-input-wrap">
+            <input type="color" id="picker-karma" value="#9775fa">
+            <span id="label-karma">#9775fa</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="slack-string-wrap">
+        <label class="modal-label">Ciąg motywu (HEX):</label>
+        <div class="slack-input-row">
+          <input type="text" id="slack-theme-string" class="modal-input" placeholder="#0B0C0E,#15181C,#F1F3F5,#FA5252,#FD7E14,#9775FA">
+          <button id="btn-copy-theme-string" class="btn btn-ghost" title="Kopiuj ciąg">Kopiuj</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-reset-theme" class="btn btn-subtle">Przywróć domyślne</button>
+        <button id="btn-cancel-theme" class="btn btn-ghost">Anuluj</button>
+        <button id="btn-apply-theme" class="btn btn-primary">Zastosuj i zapisz</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Import Handover -->
+  <div id="modal-handover" class="modal-backdrop hidden">
+    <div class="modal-window glass-panel" style="width: 540px;">
+      <div class="modal-head">
+        <h3>📥 Odbiór dyżuru (Import Handoveru)</h3>
+        <span class="modal-close" onclick="document.getElementById('modal-handover').classList.add('hidden')">&times;</span>
+      </div>
+      <p class="modal-desc">Wklej poniżej listę handoveru otrzymaną od poprzedniej zmiany (format: <code>host ! service | powód</code>):</p>
+      <textarea id="handover-text" class="modal-textarea" style="height: 150px; font-size: 11px; font-family: monospace;" placeholder="# Wklej tutaj tekst handoveru od zmiennika...&#10;srv-prod-01 ! Load Average | INC-4029 w toku prac&#10;bastion01 ! Check SSH | Prace planowane"></textarea>
+      <div class="modal-actions">
+        <button id="btn-cancel-handover" class="btn btn-ghost">Anuluj</button>
+        <button id="btn-save-handover" class="btn btn-primary">Zaimportuj i wycisz</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Export Handover -->
+  <div id="modal-export-handover" class="modal-backdrop hidden">
+    <div class="modal-window glass-panel" style="width: 540px;">
+      <div class="modal-head">
+        <h3>📤 Przekazanie dyżuru (Eksport Handoveru)</h3>
+        <span class="modal-close" onclick="document.getElementById('modal-export-handover').classList.add('hidden')">&times;</span>
+      </div>
+      <p class="modal-desc">Tekst został automatycznie skopiowany do schowka. Możesz go wkleić na Slacku lub Teamsach zmiennikowi:</p>
+      <textarea id="export-handover-text" class="modal-textarea" style="height: 150px; font-size: 11px; font-family: monospace;" readonly></textarea>
+      <div class="modal-actions">
+        <button id="btn-copy-again-handover" class="btn btn-secondary">📋 Skopiuj ponownie</button>
+        <button id="btn-close-export-handover" class="btn btn-primary">Zamknij</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

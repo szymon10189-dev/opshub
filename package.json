@@ -1,0 +1,47 @@
+{
+  "name": "icinga-monitor",
+  "version": "1.0.0",
+  "description": "Desktopowy monitor Icinga",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable",
+    "dist:mac": "electron-builder --mac dmg zip",
+    "dist:all": "electron-builder -mw"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.opshub.monitoring",
+    "productName": "OpsHub",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "OpsHub-Demo.exe"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "artifactName": "OpsHub-Demo-mac.${ext}"
+    }
+  }
+}
