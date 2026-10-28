@@ -18,13 +18,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build macOS DMG & ZIP
-        run: npx electron-builder --mac dmg zip --publish never
+      - name: Build macOS Universal (Intel + Apple Silicon)
+        run: npx electron-builder --mac dmg zip --universal --publish never
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OpsHub-macOS-Demo
+          name: OpsHub-macOS-Universal-Demo
           path: |
             dist/*.dmg
             dist/*.zip

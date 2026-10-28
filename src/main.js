@@ -51,20 +51,39 @@ function createMainWindow() {
     }
   });
 
+  // BEZPIECZNE ZAMYKANIE: na macOS zrzuca tryb fullscreen, aby uniknąć czarnego ekranu
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
       e.preventDefault();
-      mainWindow.hide();
+      if (process.platform === 'darwin' && mainWindow.isFullScreen()) {
+        mainWindow.once('leave-full-screen', () => mainWindow.hide());
+        mainWindow.setFullScreen(false);
+      } else {
+        mainWindow.hide();
+      }
     }
   });
 }
+
+// ZEZWALA NA POPRAWNE ZAMKNIĘCIE PRZEZ CMD+Q NA MACOS
+app.on('before-quit', () => {
+  app.isQuitting = true;
+});
+
+// KLIKNIĘCIE W DOCKU NA MACOS PRZYWRACA OKNO
+app.on('activate', () => {
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
 
 function createTray() {
   tray = new Tray(createColorIcon('#888888'));
   tray.setToolTip('OpsHub — Icinga & Karma');
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Otworz okno', click: () => mainWindow.show() },
+    { label: 'Otworz okno', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { label: 'Zaloguj do Icinga (SSO)', click: () => startSsoLogin() },
     { label: 'Zaloguj do Karma (SSO)', click: () => startKarmaLogin() },
     { label: 'Odswiez teraz', click: () => fetchAllMonitoringData() },
@@ -73,6 +92,7 @@ function createTray() {
       label: 'Wyloguj (Wyczysc sesje Icinga)', 
       click: () => {
         store.set('sessionCookies', '');
+        console.log('[SSO] Sesja Icinga usunieta.');
         startSsoLogin();
       }
     },
@@ -80,15 +100,22 @@ function createTray() {
       label: 'Wyloguj (Wyczysc sesje Karma)', 
       click: () => {
         store.set('karmaCookies', '');
+        console.log('[SSO] Sesja Karma usunieta.');
         startKarmaLogin();
       }
     },
     { type: 'separator' },
-    { label: 'Zamknij program', click: () => { app.isQuitting = true; app.quit(); } }
+    { 
+      label: 'Zamknij program', 
+      click: () => { 
+        app.isQuitting = true; 
+        app.quit(); 
+      } 
+    }
   ]);
 
   tray.setContextMenu(contextMenu);
-  tray.on('double-click', () => mainWindow.show());
+  tray.on('double-click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
 }
 
 function startSsoLogin() {
@@ -132,7 +159,7 @@ function startSsoLogin() {
         console.log('[SSO Icinga] Sesja autoryzowana.');
         authWindow.close();
         authWindow = null;
-        if (mainWindow) mainWindow.show();
+        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
         startPolling();
         fetchAllMonitoringData();
       }
@@ -288,6 +315,7 @@ async function fetchKarmaRaw() {
         const gName = String(grid.labelName || grid.label_name || grid.LabelName || '').toLowerCase();
         const gVal = String(grid.labelValue || grid.label_value || grid.LabelValue || '').toLowerCase();
 
+        // JEŚLI GRID JEST PODZIELONY WG REPLIKI I NIE JEST TO REPLICA01 -> POMIŃ CAŁY GRID
         if (gName === 'replica' && gVal && gVal !== 'replica01') {
           continue;
         }
@@ -376,7 +404,7 @@ function formatIcingaDateTime(date) {
 }
 
 // -------------------------------------------------------------
-// SSH W NOWEJ KARCIE ISTNIEJĄCEGO TERMINALA (BEZ ZMIAN)
+// SSH W NOWEJ KARCIE TERMINALA (CZYSTE PARAMETRY, BEZ ŚREDNIKÓW)
 // -------------------------------------------------------------
 function openSshTerminal(host) {
   const cleanHost = String(host).replace(/^\[KARMA\]\s*/, '').split(':')[0].trim();
@@ -391,16 +419,19 @@ function openSshTerminal(host) {
       exec('where wsl.exe', (wslErr) => {
         const hasWsl = !wslErr;
         if (hasWt && hasWsl) {
-          spawn('wt.exe', [
-            '-w', '0', 'nt',
-            '--title', `SSH: ${cleanHost}`,
-            'wsl.exe', '--cd', '~',
-            'bash', '-lic', `ssh ${cleanHost}`
-          ], { detached: true, stdio: 'ignore' }).unref();
+          exec('wsl.exe which zsh', (zshErr, stdout) => {
+            const shellBin = (!zshErr && stdout && stdout.trim()) ? 'zsh' : 'bash';
+            spawn('wt.exe', [
+              '-w', '0', 'nt',
+              '--title', `SSH: ${cleanHost}`,
+              'wsl.exe', '--cd', '~',
+              shellBin, '-lic', `ssh ${cleanHost}`
+            ], { detached: true, stdio: 'ignore' }).unref();
+          });
         } else if (hasWt) {
           spawn('wt.exe', ['-w', '0', 'nt', '--title', `SSH: ${cleanHost}`, 'ssh', cleanHost], { detached: true, stdio: 'ignore' }).unref();
         } else if (hasWsl) {
-          spawn('cmd.exe', ['/c', 'start', 'wsl.exe', '--cd', '~', 'bash', '-lic', `ssh ${cleanHost}`], { detached: true, stdio: 'ignore' }).unref();
+          spawn('cmd.exe', ['/c', 'start', 'wsl.exe', '--cd', '~', 'zsh', '-lic', `ssh ${cleanHost}`], { detached: true, stdio: 'ignore' }).unref();
         } else {
           spawn('cmd.exe', ['/c', 'start', 'powershell.exe', '-NoExit', '-Command', `ssh ${cleanHost}`], { detached: true, stdio: 'ignore' }).unref();
         }
@@ -1127,7 +1158,7 @@ ipcMain.handle('icinga-remove-ack', async (_e, { host, service }) => {
   return false;
 });
 
-// DOWNTIME — JAWNE WYŁĄCZENIE FLEXIBLE (flexible: 'n'), CZAS W SEKUNDACH I EXACT INTERVAL
+// DOWNTIME — JAWNE WYŁĄCZENIE FLEXIBLE (flexible: 'n'), CZAS W SEKUNDACH I FIXED WINDOW
 ipcMain.handle('icinga-downtime', async (_e, { host, service, minutes, comment, startStr, endStr }) => {
   const cleanHost = host.replace(/^\[KARMA\]\s*/, '');
   const modalUrl = `/icingadb/service/schedule-downtime?name=${encodeURIComponent(service)}&host.name=${encodeURIComponent(cleanHost)}&showCompact=1`;
