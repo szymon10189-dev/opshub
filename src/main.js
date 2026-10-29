@@ -9,6 +9,7 @@ let tray = null;
 let pollTimer = null;
 let cachedAlerts = [];
 const firstSeenMemory = {};
+const hostOsCache = new Map(); // Pamięć OS per host (linux | windows | unknown)
 
 const DEFAULT_ICINGA_URL = 'https://monitoring-dev.hostersi.systems';
 const DEFAULT_KARMA_URL = 'https://karma.hostersi.systems';
@@ -19,6 +20,114 @@ function getIcingaUrl() {
 
 function getKarmaUrl() {
   return store.get('karmaUrl') || DEFAULT_KARMA_URL;
+}
+
+// -------------------------------------------------------------
+// HEURYSTYKA ZAPASOWA (BEZ FAŁSZYWYCH DOPASOWAŃ 'WIN' I 'HTTPS://')
+// -------------------------------------------------------------
+function fallbackDetectOs(rawHost = '', service = '', output = '') {
+  const hLower = String(rawHost || '').toLowerCase();
+  const sLower = String(service || '').toLowerCase();
+  const outLower = String(output || '').toLowerCase();
+  const combined = `${hLower} ${sLower} ${outLower}`;
+
+  // 1. Zabezpieczenie przed usługami zarządzanymi AWS (RDS, Aurora, ALB, ElastiCache)
+  const isAwsManaged = /(^|[-_.])(rds|aurora|elasticache|redis|memcached|alb|nlb|elb|s3|sqs|sns|lambda|dynamodb|apigw)([-_.]|$)/i.test(hLower)
+                    || /\b(cloudwatch|check_aws|check_rds|check_alb)\b/i.test(sLower)
+                    || /\b(CPUUtilization|FreeableMemory|FreeStorageSpace|DatabaseConnections|TargetResponseTime|HTTPCode_Target_)\b/.test(service);
+
+  if (isAwsManaged) {
+    return 'unknown';
+  }
+
+  // 2. Windows: tylko izolowane (win), (windows) lub dyski z ukośnikiem wstecznym C:\
+  const isWinTag = /(?:^|[\s_([{])(?:win|windows)(?:$|[\s_)\]}])/i.test(sLower);
+  const isWinDrive = /\b[c-zC-Z]:\\/.test(output) || /\bdisk\s+[c-zC-Z]:/i.test(sLower);
+  const isWinSpecific = /\b(w32time|nsclient|ncpa|wmi_exporter|windows_exporter)\b/i.test(combined);
+
+  if (isWinTag || isWinDrive || isWinSpecific) {
+    return 'windows';
+  }
+
+  // 3. Linux: ścieżki uniksowe (Disk /), Load, SSH, pakiety systemowe
+  const isLinDisk = /\bdisk\s+\//i.test(sLower) || /\/dev\/(?:mapper|sd[a-z]|nvme)/i.test(outLower);
+  const isLinMetric = /\b(load|load\s*average|apt|yum|systemd|iowait|node[-_]exporter|procs)\b/i.test(sLower);
+  const isLinTag = /(?:^|[\s_([{])(?:lin|linux)(?:$|[\s_)\]}])/i.test(sLower);
+
+  if (isLinDisk || isLinMetric || isLinTag) {
+    return 'linux';
+  }
+
+  return 'unknown';
+}
+
+// -------------------------------------------------------------
+// ODCZYT 'TYPE OF SERVER OS' Z ICINGA DB (Z CACHEM NA HOST)
+// -------------------------------------------------------------
+async function resolveHostOs(cleanHost, rawObj, service, output) {
+  if (!cleanHost || cleanHost === 'Cluster' || cleanHost === 'Host') return 'unknown';
+
+  if (hostOsCache.has(cleanHost)) {
+    return hostOsCache.get(cleanHost);
+  }
+
+  // Sprawdzenie czy w przekazanym obiekcie Icingi już są Custom Variables
+  if (rawObj) {
+    const sStr = JSON.stringify(rawObj);
+    const m = sStr.match(/type\s*of\s*server\s*os[\s\S]{1,60}?(linux|windows|win|unix|none|aws)/i);
+    if (m) {
+      const val = m[1].toLowerCase();
+      let res = 'unknown';
+      if (val.includes('win')) res = 'windows';
+      else if (val.includes('lin') || val.includes('unix')) res = 'linux';
+      hostOsCache.set(cleanHost, res);
+      return res;
+    }
+  }
+
+  // Asynchroniczne odpytanie szczegółów hosta z Icinga Web 2
+  const cookies = store.get('sessionCookies');
+  const icingaUrl = getIcingaUrl();
+  if (cookies && icingaUrl && !cleanHost.includes(' ')) {
+    try {
+      const targetUrl = `${icingaUrl}/icingaweb2/icingadb/host?name=${encodeURIComponent(cleanHost)}`;
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 2000);
+
+      const res = await fetch(targetUrl, {
+        signal: ctrl.signal,
+        headers: {
+          'Cookie': cookies,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'text/html,application/json'
+        }
+      });
+      clearTimeout(tid);
+
+      if (res.ok) {
+        const text = await res.text();
+        const m = text.match(/Type\s*of\s*server\s*OS[\s\S]{1,120}?(Linux|Windows|AWS|None|Brak|Unix)/i)
+               || text.match(/["']?Type\s*of\s*server\s*OS["']?\s*[:=]\s*["']?([a-zA-Z0-9_-]+)/i);
+        if (m) {
+          const val = (m[1] || m[2] || '').toLowerCase().trim();
+          let detected = 'unknown';
+          if (val.includes('win')) detected = 'windows';
+          else if (val.includes('lin') || val.includes('unix')) detected = 'linux';
+          else if (val.includes('aws') || val.includes('none') || val.includes('brak')) detected = 'unknown';
+
+          hostOsCache.set(cleanHost, detected);
+          return detected;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Fallback heurystyczny
+  const fallback = fallbackDetectOs(cleanHost, service, output);
+  if (fallback !== 'unknown') {
+    hostOsCache.set(cleanHost, fallback);
+  }
+  return fallback;
 }
 
 function createColorIcon(colorHex) {
@@ -51,7 +160,6 @@ function createMainWindow() {
     }
   });
 
-  // BEZPIECZNE ZAMYKANIE: na macOS zrzuca tryb fullscreen, aby uniknąć czarnego ekranu
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
       e.preventDefault();
@@ -65,12 +173,10 @@ function createMainWindow() {
   });
 }
 
-// ZEZWALA NA POPRAWNE ZAMKNIĘCIE PRZEZ CMD+Q NA MACOS
 app.on('before-quit', () => {
   app.isQuitting = true;
 });
 
-// KLIKNIĘCIE W DOCKU NA MACOS PRZYWRACA OKNO
 app.on('activate', () => {
   if (mainWindow) {
     mainWindow.show();
@@ -273,6 +379,36 @@ async function fetchIcingaActiveDowntimes() {
   }
 }
 
+async function fetchIcingaActiveComments() {
+  const cookies = store.get('sessionCookies');
+  const icingaUrl = getIcingaUrl();
+  if (!cookies || !icingaUrl) return [];
+
+  const candidateUrls = [
+    `${icingaUrl}/icingaweb2/icingadb/comments?format=json&limit=500`,
+    `${icingaUrl}/icingaweb2/icingadb/comments?limit=500&format=json`
+  ];
+
+  for (const targetUrl of candidateUrls) {
+    try {
+      const res = await fetch(targetUrl, {
+        headers: {
+          'Cookie': cookies,
+          'Accept': 'application/json, text/javascript, */*',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (text.trim().startsWith('<')) continue;
+      const json = JSON.parse(text);
+      const items = Array.isArray(json) ? json : (json.data || json.results || []);
+      if (items && items.length > 0) return items;
+    } catch (err) {}
+  }
+  return [];
+}
+
 async function fetchKarmaRaw() {
   const karmaUrl = getKarmaUrl();
   const targetUrl = `${karmaUrl}/alerts.json`;
@@ -315,7 +451,6 @@ async function fetchKarmaRaw() {
         const gName = String(grid.labelName || grid.label_name || grid.LabelName || '').toLowerCase();
         const gVal = String(grid.labelValue || grid.label_value || grid.LabelValue || '').toLowerCase();
 
-        // JEŚLI GRID JEST PODZIELONY WG REPLIKI I NIE JEST TO REPLICA01 -> POMIŃ CAŁY GRID
         if (gName === 'replica' && gVal && gVal !== 'replica01') {
           continue;
         }
@@ -403,9 +538,6 @@ function formatIcingaDateTime(date) {
   return `${Y}-${m}-${d}T${H}:${i}:${s}`;
 }
 
-// -------------------------------------------------------------
-// SSH W NOWEJ KARCIE TERMINALA (CZYSTE PARAMETRY, BEZ ŚREDNIKÓW)
-// -------------------------------------------------------------
 function openSshTerminal(host) {
   const cleanHost = String(host).replace(/^\[KARMA\]\s*/, '').split(':')[0].trim();
   if (!cleanHost) return;
@@ -491,10 +623,11 @@ function getDoneRecord(locallyDone, key) {
 }
 
 async function fetchAllMonitoringData() {
-  const [icingaRes, karmaRes, rawDowntimes] = await Promise.all([
+  const [icingaRes, karmaRes, rawDowntimes, rawComments] = await Promise.all([
     fetchIcingaRaw(),
     fetchKarmaRaw(),
-    fetchIcingaActiveDowntimes()
+    fetchIcingaActiveDowntimes(),
+    fetchIcingaActiveComments()
   ]);
 
   const dtMap = new Map();
@@ -503,15 +636,53 @@ async function fetchAllMonitoringData() {
     const s = String(d['service.name'] || d.service_name || (d.service && d.service.name) || '').toLowerCase();
     const startMs = parseAlertTime([d.start, d['downtime.start'], d.start_time]);
     const endMs = parseAlertTime([d.end, d['downtime.end'], d.end_time]);
+
+    const rawComment = d.comment || d['downtime.comment'] || d.comment_data || '';
+    const rawAuthor = d.author_name || d['downtime.author_name'] || d.author || '';
+    let fullComment = '';
+    if (rawAuthor && rawComment) {
+      fullComment = `${rawAuthor}: ${rawComment}`;
+    } else {
+      fullComment = rawComment || rawAuthor || 'Brak komentarza';
+    }
+
     const dtInfo = {
       id: String(d.id || ''),
       name: String(d.name || d['downtime.name'] || d.downtime_name || d.id || ''),
       startMs: startMs,
       endMs: endMs,
-      comment: String(d.comment || 'Downtime')
+      comment: fullComment
     };
     if (h && s) dtMap.set(`${h}!${s}`, dtInfo);
     if (h && !s) dtMap.set(`${h}!*`, dtInfo);
+  });
+
+  const ackMap = new Map();
+  const sortedComments = [...(rawComments || [])].sort((a, b) => {
+    const tA = parseAlertTime([a.entry_time, a['comment.entry_time'], a.time, a.timestamp]) || 0;
+    const tB = parseAlertTime([b.entry_time, b['comment.entry_time'], b.time, b.timestamp]) || 0;
+    return tA - tB;
+  });
+
+  sortedComments.forEach(c => {
+    const h = String(c['host.name'] || c.host_name || (c.host && (c.host.name || c.host.display_name)) || '').toLowerCase().trim();
+    const s = String(c['service.name'] || c.service_name || (c.service && (c.service.name || c.service.display_name)) || '').toLowerCase().trim();
+
+    const rawComment = c.text || c.comment || c['comment.text'] || c['comment.comment'] || c.message || '';
+    const rawAuthor = c.author || c.author_name || c['comment.author'] || c['comment.author_name'] || '';
+
+    let formatted = '';
+    if (rawAuthor && rawComment) {
+      const cleanAuthor = rawAuthor.includes('@') ? rawAuthor.split('@')[0] : rawAuthor;
+      formatted = `${cleanAuthor}: ${rawComment}`;
+    } else {
+      formatted = rawComment || rawAuthor || '';
+    }
+
+    if (formatted) {
+      if (h && s) ackMap.set(`${h}!${s}`, formatted);
+      if (h && !s) ackMap.set(`${h}!*`, formatted);
+    }
   });
 
   const locallyDone = store.get('locallyDone') || {};
@@ -521,7 +692,7 @@ async function fetchAllMonitoringData() {
   let warnCount = 0;
   const now = Date.now();
 
-  // 1. KARMA — TYLKO REPLICA01 I PRAWIDŁOWE ETYKIETY
+  // 1. KARMA
   const karmaUrl = getKarmaUrl();
   let karmaIndex = 0;
   for (const a of (karmaRes.items || [])) {
@@ -616,6 +787,8 @@ async function fetchAllMonitoringData() {
 
     if (!isDone) critCount++;
 
+    const osType = fallbackDetectOs(rawHost, service, output);
+
     processedList.push({
       id: uniqueId,
       key,
@@ -631,14 +804,18 @@ async function fetchAllMonitoringData() {
       downtimeName: null,
       downtimeStartMs: null,
       downtimeEndMs: null,
+      downtimeComment: '',
+      ackComment: '',
       isLocallyDone: isDone,
       localNote: localNote,
       isKarma: true,
+      osType: osType,
+      isWindows: osType === 'windows',
       karmaWebUrl: `${karmaUrl}/?q=%40state%3Dactive&q=severity%3Dcritical&q=alertname%21%3DRebootRequired`
     });
   }
 
-  // 2. ICINGA
+  // 2. ICINGA (Z ASYNCHRONICZNYM ODCZYTEM OS HOSTÓW)
   const icingaBaseUrl = getIcingaUrl();
   let icingaIndex = 0;
   for (const s of (icingaRes.items || [])) {
@@ -665,6 +842,18 @@ async function fetchAllMonitoringData() {
       s.is_acknowledged ||
       (s.state && (s.state.is_acknowledged || s.state.is_ack))
     );
+
+    let ackComment = ackMap.get(`${cleanHost}!${cleanService}`) || ackMap.get(`${cleanHost}!*`) || '';
+    if (!ackComment && acknowledged) {
+      const inlineComment = s['acknowledgement.text'] || s['acknowledgement.comment'] || s.acknowledgement_comment || (s.acknowledgement && (s.acknowledgement.text || s.acknowledgement.comment)) || '';
+      const inlineAuthor = s['acknowledgement.author'] || s['acknowledgement.author_name'] || s.acknowledgement_author_name || (s.acknowledgement && (s.acknowledgement.author || s.acknowledgement.author_name)) || '';
+      if (inlineAuthor && inlineComment) {
+        const cleanAuthor = inlineAuthor.includes('@') ? inlineAuthor.split('@')[0] : inlineAuthor;
+        ackComment = `${cleanAuthor}: ${inlineComment}`;
+      } else if (inlineComment) {
+        ackComment = inlineComment;
+      }
+    }
 
     let state = 0;
     const textState = (s.state && s.state.text ? s.state.text : '').toLowerCase();
@@ -735,6 +924,8 @@ async function fetchAllMonitoringData() {
       if (state === 1) warnCount++;
     }
 
+    // Precyzyjna detekcja systemu
+    const osType = await resolveHostOs(cleanHost, s, service, output);
     const icingaWebUrl = `${icingaBaseUrl}/icingaweb2/icingadb/service?name=${encodeURIComponent(service)}&host.name=${encodeURIComponent(cleanHost)}`;
 
     processedList.push({
@@ -752,9 +943,13 @@ async function fetchAllMonitoringData() {
       downtimeName: matchedDt ? matchedDt.name : null,
       downtimeStartMs: matchedDt ? matchedDt.startMs : null,
       downtimeEndMs: matchedDt ? matchedDt.endMs : null,
+      downtimeComment: matchedDt ? matchedDt.comment : '',
+      ackComment: ackComment || '',
       isLocallyDone: isDone,
       localNote: localNote,
       isKarma: false,
+      osType: osType,
+      isWindows: osType === 'windows',
       icingaWebUrl
     });
   }
@@ -795,10 +990,7 @@ function updateTray(status, count) {
   tray.setToolTip(tooltip);
 }
 
-// -------------------------------------------------------------
-// PANCERNY EXECUTOR FORMULARZY MODALNYCH ICINGA WEB 2
-// -------------------------------------------------------------
-async function executeIcingaForm(relativeUrl, fieldOverrides = {}, defaultButton = 'btn_submit') {
+async function executeIcingaForm(relativeUrl, fieldOverrides = {}, preferredButtonText = '') {
   const cookies = store.get('sessionCookies');
   const icingaUrl = getIcingaUrl();
   if (!cookies || !icingaUrl) return { success: false, error: 'NO_AUTH' };
@@ -819,10 +1011,18 @@ async function executeIcingaForm(relativeUrl, fieldOverrides = {}, defaultButton
     return { success: false, error: err.message };
   }
 
+  if (!getRes.ok && getRes.status !== 302) {
+    return { success: false, error: `GET failed: HTTP ${getRes.status}` };
+  }
+
   const getHtml = await getRes.text();
 
-  const formMatch = getHtml.match(/<form[^>]+action="([^"]+)"/i);
-  let formAction = formMatch ? formMatch[1] : fullUrl;
+  const formMatch = getHtml.match(/<form\b[^>]*action="([^"]*)"[^>]*>/i)
+                 || getHtml.match(/<form\b[^>]*action='([^']*)'[^>]*>/i);
+  
+  let formAction = (formMatch && formMatch[1]) ? formMatch[1] : fullUrl;
+  formAction = formAction.replace(/&amp;/g, '&');
+
   if (formAction && !formAction.startsWith('http')) {
     formAction = `${icingaUrl}${formAction.startsWith('/') ? '' : '/'}${formAction}`;
   }
@@ -830,9 +1030,12 @@ async function executeIcingaForm(relativeUrl, fieldOverrides = {}, defaultButton
   const params = new URLSearchParams();
 
   try {
-    const urlObj = new URL(fullUrl);
-    urlObj.searchParams.forEach((val, key) => {
-      if (key !== 'showCompact') params.set(key, val);
+    const fullUrlObj = new URL(fullUrl);
+    const actionUrlObj = new URL(formAction);
+    fullUrlObj.searchParams.forEach((val, key) => {
+      if (key !== 'showCompact' && !actionUrlObj.searchParams.has(key)) {
+        params.append(key, val);
+      }
     });
   } catch (e) {}
 
@@ -840,26 +1043,68 @@ async function executeIcingaForm(relativeUrl, fieldOverrides = {}, defaultButton
   let tagMatch;
   while ((tagMatch = inputTagRegex.exec(getHtml)) !== null) {
     const tag = tagMatch[0];
+    const typeM = tag.match(/\btype=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     const nameM = tag.match(/\bname=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     const valM = tag.match(/\bvalue=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    if (nameM) {
-      const name = nameM[1] || nameM[2] || nameM[3] || '';
-      const val = valM ? (valM[1] || valM[2] || valM[3] || '') : '';
-      if (name) params.set(name, val);
+
+    const type = (typeM ? (typeM[1] || typeM[2] || typeM[3]) : 'text').toLowerCase();
+    const name = nameM ? (nameM[1] || nameM[2] || nameM[3]) : '';
+    const val = valM ? (valM[1] || valM[2] || valM[3]) : '';
+
+    if (!name) continue;
+
+    if (type === 'checkbox' || type === 'radio') {
+      if (/\bchecked\b/i.test(tag)) {
+        params.append(name, val || '1');
+      }
+      continue;
+    }
+
+    if (type === 'button' || type === 'submit') continue;
+    params.append(name, val);
+  }
+
+  let foundSubmitBtn = null;
+  const btnRegex = /<button\b([^>]*)>([\s\S]*?)<\/button>/gi;
+  let bMatch;
+  while ((bMatch = btnRegex.exec(getHtml)) !== null) {
+    const attrs = bMatch[1];
+    const text = bMatch[2].replace(/<[^>]+>/g, '').trim();
+
+    if (/data-dismiss=["']?modal["']?/i.test(attrs)) continue;
+    if (/\bclass=["'][^"']*\bclose\b[^"']*["']/i.test(attrs)) continue;
+    if (/^(anuluj|cancel|zamknij|close|×)$/i.test(text)) continue;
+
+    const isSubmit = /type=["']?submit["']?/i.test(attrs) || !/type=["']?button["']?/i.test(attrs);
+    if (isSubmit) {
+      const nameM = attrs.match(/\bname=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const valM = attrs.match(/\bvalue=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      foundSubmitBtn = {
+        name: nameM ? (nameM[1] || nameM[2] || nameM[3]) : 'btn_submit',
+        value: valM ? (valM[1] || valM[2] || valM[3]) : (preferredButtonText || text)
+      };
+      break;
     }
   }
 
-  const buttonTagRegex = /<button\b([^>]*)>([\s\S]*?)<\/button>/gi;
-  while ((tagMatch = buttonTagRegex.exec(getHtml)) !== null) {
-    const attrs = tagMatch[1];
-    const textContent = tagMatch[2].replace(/<[^>]+>/g, '').trim();
-    const nameM = attrs.match(/\bname=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    const valM = attrs.match(/\bvalue=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    const name = nameM ? (nameM[1] || nameM[2] || nameM[3]) : 'btn_submit';
-    const val = valM ? (valM[1] || valM[2] || valM[3]) : textContent;
-    if (name && val) {
-      params.set(name, val);
+  if (!foundSubmitBtn) {
+    const inputSubmitRegex = /<input\b[^>]*type=["']?submit["']?[^>]*>/gi;
+    let sMatch = inputSubmitRegex.exec(getHtml);
+    if (sMatch) {
+      const tag = sMatch[0];
+      const nameM = tag.match(/\bname=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const valM = tag.match(/\bvalue=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      foundSubmitBtn = {
+        name: nameM ? (nameM[1] || nameM[2] || nameM[3]) : 'btn_submit',
+        value: valM ? (valM[1] || valM[2] || valM[3]) : (preferredButtonText || 'Submit')
+      };
     }
+  }
+
+  if (foundSubmitBtn) {
+    params.set(foundSubmitBtn.name, foundSubmitBtn.value);
+  } else if (preferredButtonText) {
+    params.set('btn_submit', preferredButtonText);
   }
 
   if (!params.get('CSRFToken')) {
@@ -875,10 +1120,6 @@ async function executeIcingaForm(relativeUrl, fieldOverrides = {}, defaultButton
     } else {
       params.set(k, String(v));
     }
-  }
-
-  if (!params.has('btn_submit') && defaultButton) {
-    params.set('btn_submit', defaultButton);
   }
 
   const csrfToken = params.get('CSRFToken');
@@ -902,26 +1143,29 @@ async function executeIcingaForm(relativeUrl, fieldOverrides = {}, defaultButton
 
     const notif = postRes.headers.get('x-icinga-notification');
     const notifText = notif ? decodeURIComponent(notif) : '';
+    const redirectHeader = postRes.headers.get('x-icinga-redirect') || postRes.headers.get('location');
     const resText = await postRes.text();
 
-    console.log(`[Icinga Form Result] URL: ${formAction} | Status: ${postRes.status} | Notif: ${notifText}`);
+    console.log(`[Icinga Form Result] URL: ${formAction} | Status: ${postRes.status} | Notif: ${notifText} | Redirect: ${redirectHeader || 'none'}`);
 
-    if (postRes.status === 302 || notifText.toLowerCase().includes('success') || notifText.toLowerCase().includes('scheduled') || notifText.toLowerCase().includes('initiated') || notifText.toLowerCase().includes('check') || notifText.toLowerCase().includes('acknowledged') || notifText.toLowerCase().includes('removed') || notifText.toLowerCase().includes('deleted')) {
-      return { success: true, notif: notifText };
+    const isSuccessStatus = postRes.status === 302 || postRes.status === 200 || postRes.status === 204;
+    const hasRedirect = Boolean(redirectHeader);
+    const hasSuccessNotif = /success|scheduled|initiated|check|acknowledged|removed|deleted|usunięto|powodzen/i.test(notifText);
+    const hasCloseModal = resText.includes('closeModal') || (resText.trim() === '' && postRes.status === 200);
+    const hasFormErrors = resText.includes('class="errors"') || resText.includes('has-error');
+
+    if (!hasFormErrors && (postRes.status === 302 || hasRedirect || hasSuccessNotif || hasCloseModal)) {
+      return { success: true, notif: notifText || 'Success' };
     }
 
-    if (resText.includes('class="errors"') || resText.includes('has-error')) {
+    if (hasFormErrors) {
       const errMatch = resText.match(/<ul[^>]+class="errors"[^>]*>([\s\S]*?)<\/ul>/i);
       const errMsg = errMatch ? errMatch[1].replace(/<[^>]+>/g, ' ').trim() : 'Błąd walidacji formularza';
       console.warn('[Icinga Błędy formularza]:', errMsg);
       return { success: false, error: errMsg };
     }
 
-    if (resText.includes('closeModal') || resText.includes('data-dismiss="modal"')) {
-      return { success: true, notif: 'Modal closed' };
-    }
-
-    return { success: false, error: `HTTP ${postRes.status}` };
+    return { success: isSuccessStatus, notif: notifText };
   } catch (err) {
     console.error('[Icinga Form Error]:', err.message);
     return { success: false, error: err.message };
@@ -978,18 +1222,49 @@ ipcMain.on('trigger-karma-sso', () => startKarmaLogin());
 ipcMain.on('open-external-url', (_e, url) => { if (url) shell.openExternal(url); });
 ipcMain.on('open-ssh', (_e, host) => openSshTerminal(host));
 
-// ROZSZERZONE CONTEXT MENU PRAWEGO PRZYCISKU MYSZY
-ipcMain.on('show-context-menu', (event, { host, service, output, localNote, isKarma }) => {
+// -------------------------------------------------------------
+// CONTEXT MENU PPM: TYLKO LINUX LUB WINDOWS (UNKNOWN = BRAK POŁĄCZENIA)
+// -------------------------------------------------------------
+ipcMain.on('show-context-menu', (event, { host, service, output, localNote, isKarma, downtimeComment, ackComment, osType }) => {
   const cleanHost = String(host).replace(/^\[KARMA\]\s*/, '').split(':')[0].trim();
   const cleanOutput = String(output || '').replace(/\r?\n|\r/g, ' ').trim();
   const noteText = localNote ? String(localNote).trim() : '';
+  const dtCommentText = downtimeComment ? String(downtimeComment).trim() : '';
+  const ackCommentText = ackComment ? String(ackComment).trim() : '';
 
-  const menuTemplate = [
-    {
+  // Sprawdzenie typu OS z cache lub fallbacku
+  let finalOs = osType;
+  if (!finalOs || finalOs === 'unknown') {
+    finalOs = hostOsCache.get(cleanHost) || fallbackDetectOs(cleanHost, service, output);
+  }
+
+  const clientPrefix = cleanHost.includes('-') ? cleanHost.split('-')[0].trim() : cleanHost;
+  const docsUrl = `https://readme.hostersi.systems/search?q=${encodeURIComponent(clientPrefix)}&ref=collection`;
+  const guacamoleUrl = 'https://guacamole.hostersi.systems/#/';
+
+  const menuTemplate = [];
+
+  // Jeśli nie ma pewności (AWS, chmura, brak info) -> NIE DODAJE ŻADNEJ OPCJI POŁĄCZENIA
+  if (finalOs === 'windows') {
+    menuTemplate.push({
+      label: `🖥️ Otwórz Guacamole`,
+      click: () => shell.openExternal(guacamoleUrl)
+    });
+  } else if (finalOs === 'linux') {
+    menuTemplate.push({
       label: `🖥️ Połącz przez SSH (ssh ${cleanHost})`,
       click: () => openSshTerminal(cleanHost)
-    },
-    { type: 'separator' },
+    });
+  }
+
+  menuTemplate.push({
+    label: `📖 Dokumentacja (${clientPrefix})`,
+    click: () => shell.openExternal(docsUrl)
+  });
+
+  menuTemplate.push({ type: 'separator' });
+
+  menuTemplate.push(
     {
       label: `📋 Kopiuj nazwę hosta (${cleanHost})`,
       click: () => { clipboard.writeText(cleanHost); }
@@ -1003,13 +1278,21 @@ ipcMain.on('show-context-menu', (event, { host, service, output, localNote, isKa
       click: () => { clipboard.writeText(`${cleanHost} - ${service} - ${cleanOutput}`); }
     },
     {
-      label: `📌 Kopiuj z notatką (${cleanHost} - ${service} - notatka)`,
+      label: `📌 Kopiuj notatkę (${noteText})`,
       enabled: Boolean(noteText),
-      click: () => {
-        if (noteText) clipboard.writeText(`${cleanHost} - ${service} - ${noteText}`);
-      }
+      click: () => { if (noteText) clipboard.writeText(noteText); }
+    },
+    {
+      label: `💬 Kopiuj komentarz DT (${dtCommentText})`,
+      enabled: Boolean(dtCommentText),
+      click: () => { if (dtCommentText) clipboard.writeText(dtCommentText); }
+    },
+    {
+      label: `💬 Kopiuj komentarz Ack (${ackCommentText})`,
+      enabled: Boolean(ackCommentText),
+      click: () => { if (ackCommentText) clipboard.writeText(ackCommentText); }
     }
-  ];
+  );
 
   const menu = Menu.buildFromTemplate(menuTemplate);
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -1125,7 +1408,7 @@ ipcMain.handle('icinga-recheck', async (_e, { host, service }) => {
   return false;
 });
 
-// ACKNOWLEDGE
+// ACKNOWLEDGE (ZAPIS W ICINGA DB)
 ipcMain.handle('icinga-ack', async (_e, { host, service, comment, persistent }) => {
   const cleanHost = host.replace(/^\[KARMA\]\s*/, '');
   const modalUrl = `/icingadb/service/acknowledge?name=${encodeURIComponent(service)}&host.name=${encodeURIComponent(cleanHost)}&showCompact=1`;
@@ -1158,7 +1441,7 @@ ipcMain.handle('icinga-remove-ack', async (_e, { host, service }) => {
   return false;
 });
 
-// DOWNTIME — JAWNE WYŁĄCZENIE FLEXIBLE (flexible: 'n'), CZAS W SEKUNDACH I FIXED WINDOW
+// DOWNTIME
 ipcMain.handle('icinga-downtime', async (_e, { host, service, minutes, comment, startStr, endStr }) => {
   const cleanHost = host.replace(/^\[KARMA\]\s*/, '');
   const modalUrl = `/icingadb/service/schedule-downtime?name=${encodeURIComponent(service)}&host.name=${encodeURIComponent(cleanHost)}&showCompact=1`;
@@ -1190,48 +1473,53 @@ ipcMain.handle('icinga-downtime', async (_e, { host, service, minutes, comment, 
   return false;
 });
 
-// PANCERNE USUWANIE DOWNTIME W ICINGA DB (URL: /icingadb/downtimes/delete)
-ipcMain.handle('icinga-remove-downtime', async (_e, { host, service, dtName, dtId }) => {
-  const cleanHost = host.replace(/^\[KARMA\]\s*/, '');
-  const cookies = store.get('sessionCookies');
-  const icingaUrl = getIcingaUrl();
-  if (!cookies || !icingaUrl) return false;
-
-  console.log(`[Icinga Remove Downtime] Wycofywanie okna prac dla: ${cleanHost} - ${service}`);
-
-  const targetRelativeUrl = `/icingadb/downtimes/delete?service.name=${encodeURIComponent(service)}&host.name=${encodeURIComponent(cleanHost)}&showCompact=1`;
-  
-  const res = await executeIcingaForm(targetRelativeUrl, {
-    btn_submit: 'Delete downtime'
-  }, 'Delete downtime');
-
-  if (res.success) {
-    setTimeout(fetchAllMonitoringData, 1500);
-    return true;
+// REMOVE DOWNTIME
+ipcMain.handle('icinga-remove-downtime', async (_e, arg1, arg2, arg3, arg4, arg5) => {
+  let host, service, dtName, dtId;
+  if (typeof arg1 === 'object' && arg1 !== null) {
+    ({ host, service, dtName, dtId } = arg1);
+  } else if (arg5 !== undefined) {
+    host = arg2; service = arg3; dtName = arg4; dtId = arg5;
+  } else if (arg4 !== undefined) {
+    host = arg1; service = arg2; dtName = arg3; dtId = arg4;
+  } else {
+    host = arg1; service = arg2;
   }
 
+  const cleanHost = String(host || '').replace(/^\[KARMA\]\s*/, '').trim();
+  const cleanService = String(service || '').trim();
+  const cookies = store.get('sessionCookies');
+  const icingaUrl = getIcingaUrl();
+  if (!cookies || !icingaUrl || !cleanHost) return false;
+
+  console.log(`[Icinga Remove Downtime] Wycofywanie okna prac dla: ${cleanHost} - ${cleanService}`);
+
   let idToUse = dtId;
-  if (!idToUse) {
-    const activeList = await fetchIcingaActiveDowntimes();
-    const match = activeList.find(d => {
-      const h = String(d['host.name'] || d.host_name || (d.host && d.host.name) || '').toLowerCase();
-      const s = String(d['service.name'] || d.service_name || (d.service && d.service.name) || '').toLowerCase();
-      return h === cleanHost.toLowerCase() && (s === service.toLowerCase() || !s);
-    });
-    if (match) idToUse = match.id;
+  const activeList = await fetchIcingaActiveDowntimes();
+  const match = activeList.find(d => {
+    const h = String(d['host.name'] || d.host_name || (d.host && d.host.name) || '').toLowerCase();
+    const s = String(d['service.name'] || d.service_name || (d.service && d.service.name) || '').toLowerCase();
+    return h === cleanHost.toLowerCase() && (s === cleanService.toLowerCase() || !s);
+  });
+  if (match && match.id) {
+    idToUse = match.id;
   }
 
   if (idToUse) {
     const idUrl = `/icingadb/downtimes/delete?id=${encodeURIComponent(idToUse)}&showCompact=1`;
-    const resId = await executeIcingaForm(idUrl, {
-      id: idToUse,
-      btn_submit: 'Delete downtime'
-    }, 'Delete downtime');
-
+    const resId = await executeIcingaForm(idUrl, {}, 'Delete downtime');
     if (resId.success) {
       setTimeout(fetchAllMonitoringData, 1500);
       return true;
     }
+  }
+
+  const targetRelativeUrl = `/icingadb/downtimes/delete?service.name=${encodeURIComponent(cleanService)}&host.name=${encodeURIComponent(cleanHost)}&showCompact=1`;
+  const res = await executeIcingaForm(targetRelativeUrl, {}, 'Delete downtime');
+
+  if (res.success) {
+    setTimeout(fetchAllMonitoringData, 1500);
+    return true;
   }
 
   return false;

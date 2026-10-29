@@ -15,12 +15,31 @@ let isDragSelecting = false;
 let dragStartIndex = -1;
 let dragMode = 'select';
 
-// Stan szerokości kolumn
-let colWidths = {
-  status: 140,
+// -------------------------------------------------------------
+// TRZY CAŁKOWICIE AUTONOMICZNE PROFILE SZEROKOŚCI KOLUMN
+// -------------------------------------------------------------
+let colWidthsMain = {
+  status: 105,
   time: 75,
-  host: 250,
-  service: 230
+  host: 240,
+  service: 220
+};
+
+let colWidthsDt = {
+  status: 90,
+  dtTime: 125,
+  time: 75,
+  host: 210,
+  service: 190,
+  dtComment: 220
+};
+
+let colWidthsAcked = {
+  status: 95,
+  time: 75,
+  host: 220,
+  service: 200,
+  ackComment: 240
 };
 
 // Stan modali
@@ -39,17 +58,12 @@ const hideDoneCheckbox = document.getElementById('hide-done-checkbox');
 const hideSourceCheckbox = document.getElementById('hide-source-checkbox');
 const hideStatusCheckbox = document.getElementById('hide-status-checkbox');
 const groupHostsCheckbox = document.getElementById('group-hosts-checkbox');
-const selectAllCheckbox = document.getElementById('select-all-checkbox');
 const tabButtons = document.querySelectorAll('.tab-btn');
 const themeSelect = document.getElementById('theme-select');
 const btnOpenCustomTheme = document.getElementById('btn-open-custom-theme');
 const btnViewCompact = document.getElementById('btn-view-compact');
 const btnViewCards = document.getElementById('btn-view-cards');
 const copyToast = document.getElementById('copy-toast');
-
-// Dropdown Opcji Widoku
-const btnToggleOptionsMenu = document.getElementById('btn-toggle-options-menu');
-const optionsDropdownMenu = document.getElementById('options-dropdown-menu');
 
 // Pływający dock
 const bulkActionBar = document.getElementById('bulk-action-bar');
@@ -132,27 +146,502 @@ const btnCopyAgainHandover = document.getElementById('btn-copy-again-handover');
 const btnCloseExportHandover = document.getElementById('btn-close-export-handover');
 
 // -------------------------------------------------------------
-// OBSŁUGA ROZWIJANEGO MENU OPCJI WIDOKU
+// WCZYTYWANIE I ZAPIS TRZECH NIEZALEŻNYCH ZESTAWÓW SZEROKOŚCI
 // -------------------------------------------------------------
-if (btnToggleOptionsMenu && optionsDropdownMenu) {
-  btnToggleOptionsMenu.addEventListener('click', (e) => {
+function loadStoredWidths() {
+  try {
+    const savedMain = JSON.parse(localStorage.getItem('opshub_col_widths_main') || localStorage.getItem('opshub_col_widths') || '{}');
+    if (savedMain && typeof savedMain === 'object') {
+      if (savedMain.status >= 50 && savedMain.status <= 400) colWidthsMain.status = savedMain.status;
+      if (savedMain.time >= 40 && savedMain.time <= 300) colWidthsMain.time = savedMain.time;
+      if (savedMain.host >= 80 && savedMain.host <= 600) colWidthsMain.host = savedMain.host;
+      if (savedMain.service >= 80 && savedMain.service <= 600) colWidthsMain.service = savedMain.service;
+    }
+  } catch (e) {}
+
+  try {
+    const savedDt = JSON.parse(localStorage.getItem('opshub_col_widths_dt') || '{}');
+    if (savedDt && typeof savedDt === 'object') {
+      if (savedDt.status >= 50 && savedDt.status <= 400) colWidthsDt.status = savedDt.status;
+      if (savedDt.dtTime >= 60 && savedDt.dtTime <= 400) colWidthsDt.dtTime = savedDt.dtTime;
+      if (savedDt.time >= 40 && savedDt.time <= 300) colWidthsDt.time = savedDt.time;
+      if (savedDt.host >= 80 && savedDt.host <= 600) colWidthsDt.host = savedDt.host;
+      if (savedDt.service >= 80 && savedDt.service <= 600) colWidthsDt.service = savedDt.service;
+      if (savedDt.dtComment >= 80 && savedDt.dtComment <= 600) colWidthsDt.dtComment = savedDt.dtComment;
+    }
+  } catch (e) {}
+
+  try {
+    const savedAcked = JSON.parse(localStorage.getItem('opshub_col_widths_acked') || '{}');
+    if (savedAcked && typeof savedAcked === 'object') {
+      if (savedAcked.status >= 50 && savedAcked.status <= 400) colWidthsAcked.status = savedAcked.status;
+      if (savedAcked.time >= 40 && savedAcked.time <= 300) colWidthsAcked.time = savedAcked.time;
+      if (savedAcked.host >= 80 && savedAcked.host <= 600) colWidthsAcked.host = savedAcked.host;
+      if (savedAcked.service >= 80 && savedAcked.service <= 600) colWidthsAcked.service = savedAcked.service;
+      if (savedAcked.ackComment >= 80 && savedAcked.ackComment <= 600) colWidthsAcked.ackComment = savedAcked.ackComment;
+    }
+  } catch (e) {}
+}
+
+function applyColumnWidths() {
+  let styleTag = document.getElementById('dynamic-grid-styles');
+  if (!styleTag) {
+    styleTag = document.createElement('style');
+    styleTag.id = 'dynamic-grid-styles';
+    document.head.appendChild(styleTag);
+  }
+
+  const isDtView = (activeMetricFilter === 'dt');
+  const isAckedView = (activeMetricFilter === 'acked');
+
+  const baseSharedStyles = `
+    .table-header-row > div {
+      position: relative !important;
+      display: flex !important;
+      align-items: center !important;
+      overflow: visible !important;
+      box-sizing: border-box !important;
+    }
+
+    .col-resizer {
+      position: absolute !important;
+      right: -5px !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      width: 10px !important;
+      cursor: col-resize !important;
+      z-index: 50 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      user-select: none !important;
+    }
+
+    .col-resizer::after {
+      content: '' !important;
+      display: block !important;
+      width: 1px !important;
+      height: 14px !important;
+      background: rgba(255, 255, 255, 0.25) !important;
+    }
+
+    .col-resizer:hover::after,
+    .col-resizer.is-active::after {
+      background: #00d26a !important;
+      width: 2px !important;
+      height: 18px !important;
+    }
+
+    .dt-progress-badge {
+      position: relative !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      background: #0d1b2a !important;
+      border: 1px solid rgba(0, 210, 106, 0.45) !important;
+      border-radius: 4px !important;
+      height: 20px !important;
+      width: 100% !important;
+      max-width: 125px !important;
+      overflow: hidden !important;
+      user-select: none !important;
+      vertical-align: middle !important;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .dt-progress-bar {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      background: linear-gradient(90deg, rgba(0, 210, 106, 0.25), rgba(0, 210, 106, 0.55)) !important;
+      border-right: 2px solid #00d26a !important;
+      box-shadow: 0 0 6px rgba(0, 210, 106, 0.6) !important;
+      transition: width 0.3s ease !important;
+      z-index: 1 !important;
+      pointer-events: none !important;
+    }
+
+    .dt-progress-content {
+      position: relative !important;
+      z-index: 2 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 4px !important;
+      width: 100% !important;
+      padding: 0 4px !important;
+      font-family: "JetBrains Mono", Consolas, monospace !important;
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      color: #e6fcf5 !important;
+      white-space: nowrap !important;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9) !important;
+    }
+
+    .row-dt-comment {
+      min-width: 0 !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      font-size: 11px !important;
+      color: #a5d8ff !important;
+      background: rgba(34, 139, 230, 0.12) !important;
+      border: 1px solid rgba(34, 139, 230, 0.35) !important;
+      border-radius: 4px !important;
+      padding: 2px 7px !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      transition: all 0.15s ease !important;
+    }
+
+    .row-dt-comment:hover {
+      background: rgba(34, 139, 230, 0.25) !important;
+      border-color: rgba(34, 139, 230, 0.7) !important;
+      color: #d0ebff !important;
+    }
+
+    .row-ack-comment {
+      min-width: 0 !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      font-size: 11px !important;
+      color: #ffd43b !important;
+      background: rgba(250, 176, 5, 0.12) !important;
+      border: 1px solid rgba(250, 176, 5, 0.35) !important;
+      border-radius: 4px !important;
+      padding: 2px 7px !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      transition: all 0.15s ease !important;
+    }
+
+    .row-ack-comment:hover {
+      background: rgba(250, 176, 5, 0.25) !important;
+      border-color: rgba(250, 176, 5, 0.7) !important;
+      color: #ffe066 !important;
+    }
+  `;
+
+  if (isDtView) {
+    const wStatus = Math.max(65, colWidthsDt.status || 90);
+    const wDtTime = Math.max(80, colWidthsDt.dtTime || 125);
+    const wTime = Math.max(50, colWidthsDt.time || 75);
+    const wHost = Math.max(100, colWidthsDt.host || 210);
+    const wService = Math.max(100, colWidthsDt.service || 190);
+    const wDtComment = Math.max(100, colWidthsDt.dtComment || 220);
+
+    styleTag.innerHTML = `
+      ${baseSharedStyles}
+      :root, .table-header-row, body[data-view="compact"] .alert-item {
+        --col-status: ${wStatus}px;
+        --col-dt-time: ${wDtTime}px;
+        --col-time: ${wTime}px;
+        --col-host: ${wHost}px;
+        --col-service: ${wService}px;
+        --col-dt-comment: ${wDtComment}px;
+        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-dt-time) var(--col-time) var(--col-host) var(--col-service) var(--col-dt-comment) minmax(100px, 1fr) minmax(280px, max-content) !important;
+      }
+    `;
+  } else if (isAckedView) {
+    const wStatus = Math.max(65, colWidthsAcked.status || 95);
+    const wTime = Math.max(50, colWidthsAcked.time || 75);
+    const wHost = Math.max(100, colWidthsAcked.host || 220);
+    const wService = Math.max(100, colWidthsAcked.service || 200);
+    const wAckComment = Math.max(100, colWidthsAcked.ackComment || 240);
+
+    styleTag.innerHTML = `
+      ${baseSharedStyles}
+      :root, .table-header-row, body[data-view="compact"] .alert-item {
+        --col-status: ${wStatus}px;
+        --col-time: ${wTime}px;
+        --col-host: ${wHost}px;
+        --col-service: ${wService}px;
+        --col-ack-comment: ${wAckComment}px;
+        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-time) var(--col-host) var(--col-service) var(--col-ack-comment) minmax(100px, 1fr) minmax(280px, max-content) !important;
+      }
+    `;
+  } else {
+    const wStatus = Math.max(65, colWidthsMain.status || 105);
+    const wTime = Math.max(50, colWidthsMain.time || 75);
+    const wHost = Math.max(100, colWidthsMain.host || 240);
+    const wService = Math.max(100, colWidthsMain.service || 220);
+
+    styleTag.innerHTML = `
+      ${baseSharedStyles}
+      :root, .table-header-row, body[data-view="compact"] .alert-item {
+        --col-status: ${wStatus}px;
+        --col-time: ${wTime}px;
+        --col-host: ${wHost}px;
+        --col-service: ${wService}px;
+        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-time) var(--col-host) var(--col-service) minmax(100px, 1fr) minmax(340px, max-content) !important;
+      }
+    `;
+  }
+}
+
+// DYNAMICZNY NAGŁÓWEK TABELI
+function renderTableHeader() {
+  const headerRow = document.querySelector('.table-header-row');
+  if (!headerRow) return;
+
+  const isDtView = (activeMetricFilter === 'dt');
+  const isAckedView = (activeMetricFilter === 'acked');
+
+  if (isDtView) {
+    headerRow.innerHTML = `
+      <div class="col-check-cell">
+        <input type="checkbox" id="select-all-checkbox" />
+      </div>
+      <div class="col-status-cell col-sortable" data-sort="state">
+        <span>STATUS</span> <span id="sort-state-icon"></span>
+        <div class="col-resizer" data-col="status"></div>
+      </div>
+      <div class="col-dt-time-cell">
+        <span>DO KOŃCA DT</span>
+        <div class="col-resizer" data-col="dtTime"></div>
+      </div>
+      <div class="col-time-cell col-sortable" data-sort="duration">
+        <span>CZAS</span> <span id="sort-duration-icon"></span>
+        <div class="col-resizer" data-col="time"></div>
+      </div>
+      <div class="col-host-cell col-sortable" data-sort="host">
+        <span>HOST</span> <span id="sort-host-icon"></span>
+        <div class="col-resizer" data-col="host"></div>
+      </div>
+      <div class="col-service-cell col-sortable" data-sort="service">
+        <span>USŁUGA</span> <span id="sort-service-icon"></span>
+        <div class="col-resizer" data-col="service"></div>
+      </div>
+      <div class="col-dt-comment-cell">
+        <span>KOMENTARZ DT</span>
+        <div class="col-resizer" data-col="dtComment"></div>
+      </div>
+      <div class="col-output-cell">BŁĄD / WYJŚCIE MONITORINGU</div>
+      <div class="col-actions-cell">AKCJE</div>
+    `;
+  } else if (isAckedView) {
+    headerRow.innerHTML = `
+      <div class="col-check-cell">
+        <input type="checkbox" id="select-all-checkbox" />
+      </div>
+      <div class="col-status-cell col-sortable" data-sort="state">
+        <span>STATUS</span> <span id="sort-state-icon"></span>
+        <div class="col-resizer" data-col="status"></div>
+      </div>
+      <div class="col-time-cell col-sortable" data-sort="duration">
+        <span>CZAS</span> <span id="sort-duration-icon"></span>
+        <div class="col-resizer" data-col="time"></div>
+      </div>
+      <div class="col-host-cell col-sortable" data-sort="host">
+        <span>HOST</span> <span id="sort-host-icon"></span>
+        <div class="col-resizer" data-col="host"></div>
+      </div>
+      <div class="col-service-cell col-sortable" data-sort="service">
+        <span>USŁUGA</span> <span id="sort-service-icon"></span>
+        <div class="col-resizer" data-col="service"></div>
+      </div>
+      <div class="col-ack-comment-cell">
+        <span>KOMENTARZ ACK</span>
+        <div class="col-resizer" data-col="ackComment"></div>
+      </div>
+      <div class="col-output-cell">BŁĄD / WYJŚCIE MONITORINGU</div>
+      <div class="col-actions-cell">AKCJE</div>
+    `;
+  } else {
+    headerRow.innerHTML = `
+      <div class="col-check-cell">
+        <input type="checkbox" id="select-all-checkbox" />
+      </div>
+      <div class="col-status-cell col-sortable" data-sort="state">
+        <span>STATUS</span> <span id="sort-state-icon"></span>
+        <div class="col-resizer" data-col="status"></div>
+      </div>
+      <div class="col-time-cell col-sortable" data-sort="duration">
+        <span>CZAS</span> <span id="sort-duration-icon"></span>
+        <div class="col-resizer" data-col="time"></div>
+      </div>
+      <div class="col-host-cell col-sortable" data-sort="host">
+        <span>HOST</span> <span id="sort-host-icon"></span>
+        <div class="col-resizer" data-col="host"></div>
+      </div>
+      <div class="col-service-cell col-sortable" data-sort="service">
+        <span>USŁUGA</span> <span id="sort-service-icon"></span>
+        <div class="col-resizer" data-col="service"></div>
+      </div>
+      <div class="col-output-cell">BŁĄD / WYJŚCIE MONITORINGU</div>
+      <div class="col-actions-cell">AKCJE</div>
+    `;
+  }
+
+  const selectAllCb = headerRow.querySelector('#select-all-checkbox');
+  if (selectAllCb) {
+    selectAllCb.addEventListener('click', (e) => {
+      const checkAll = e.target.checked;
+      if (checkAll) {
+        currentlyRenderedAlerts.forEach(a => selectedKeys.add(a.key));
+      } else {
+        currentlyRenderedAlerts.forEach(a => selectedKeys.delete(a.key));
+      }
+      syncDomSelectionVisuals();
+    });
+  }
+
+  headerRow.querySelectorAll('.col-sortable').forEach(header => {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('.col-resizer')) return;
+      const field = header.getAttribute('data-sort');
+      if (sortField === field) {
+        sortAsc = !sortAsc;
+      } else {
+        sortField = field;
+        sortAsc = field !== 'state' && field !== 'duration';
+      }
+      updateSortIcons();
+      renderAlerts();
+    });
+  });
+
+  updateSortIcons();
+}
+
+// OBSŁUGA RESIZERA
+let resizersBound = false;
+function initColumnResizers() {
+  loadStoredWidths();
+  applyColumnWidths();
+
+  if (resizersBound) return;
+  resizersBound = true;
+
+  const headerRow = document.querySelector('.table-header-row');
+  if (!headerRow) return;
+
+  headerRow.addEventListener('mousedown', (e) => {
+    const resizer = e.target.closest('.col-resizer');
+    if (!resizer) return;
+
     e.stopPropagation();
-    const isHidden = optionsDropdownMenu.classList.contains('hidden');
-    optionsDropdownMenu.classList.toggle('hidden', !isHidden);
-    btnToggleOptionsMenu.classList.toggle('is-open', isHidden);
+    e.preventDefault();
+
+    const colName = resizer.getAttribute('data-col');
+    if (!colName) return;
+
+    const isDtView = (activeMetricFilter === 'dt');
+    const isAckedView = (activeMetricFilter === 'acked');
+
+    let widthsObj = colWidthsMain;
+    if (isDtView) widthsObj = colWidthsDt;
+    else if (isAckedView) widthsObj = colWidthsAcked;
+
+    const parentCell = resizer.parentElement;
+    const startX = e.clientX;
+    const startWidth = parentCell ? parentCell.getBoundingClientRect().width : (widthsObj[colName] || 100);
+
+    document.body.classList.add('is-col-resizing');
+    resizer.classList.add('is-active');
+
+    function onMouseMove(moveEvent) {
+      const delta = moveEvent.clientX - startX;
+      const minW = (colName === 'time') ? 45 : 60;
+      const newWidth = Math.max(minW, Math.round(startWidth + delta));
+      widthsObj[colName] = newWidth;
+      applyColumnWidths();
+    }
+
+    function onMouseUp() {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      document.body.classList.remove('is-col-resizing');
+      resizer.classList.remove('is-active');
+      try {
+        if (isDtView) {
+          localStorage.setItem('opshub_col_widths_dt', JSON.stringify(colWidthsDt));
+        } else if (isAckedView) {
+          localStorage.setItem('opshub_col_widths_acked', JSON.stringify(colWidthsAcked));
+        } else {
+          localStorage.setItem('opshub_col_widths_main', JSON.stringify(colWidthsMain));
+        }
+      } catch (err) {}
+    }
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+function setupOptionsMenu() {
+  const btnOptions = 
+    document.getElementById('btn-toggle-options-menu') ||
+    document.getElementById('btn-options') ||
+    document.getElementById('options-btn') ||
+    document.getElementById('options-toggle') ||
+    document.querySelector('.options-dropdown-btn') ||
+    document.querySelector('.btn-options') ||
+    document.querySelector('.dropdown-options-wrap button') ||
+    document.querySelector('.options-dropdown button') ||
+    Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('Opcje widoku'));
+
+  const optionsPanel = 
+    document.getElementById('options-dropdown-menu') ||
+    document.getElementById('options-dropdown-panel') ||
+    document.getElementById('options-dropdown') ||
+    document.getElementById('options-menu') ||
+    document.querySelector('.options-dropdown-panel') ||
+    document.querySelector('.options-dropdown-menu') ||
+    document.querySelector('.dropdown-options-menu') ||
+    document.querySelector('.dropdown-options-panel') ||
+    (btnOptions && btnOptions.parentElement && btnOptions.parentElement.querySelector('div:not(.col-resizer)')) ||
+    (btnOptions && btnOptions.nextElementSibling);
+
+  if (!btnOptions || !optionsPanel) return;
+
+  function isPanelOpen() {
+    return optionsPanel.classList.contains('show') ||
+           optionsPanel.classList.contains('is-open') ||
+           (optionsPanel.style.display !== 'none' && !optionsPanel.classList.contains('hidden') && getComputedStyle(optionsPanel).display !== 'none');
+  }
+
+  function openMenu() {
+    optionsPanel.classList.remove('hidden');
+    optionsPanel.classList.add('show', 'is-open');
+    optionsPanel.style.display = 'block';
+    btnOptions.classList.add('is-open', 'active');
+  }
+
+  function closeMenu() {
+    optionsPanel.classList.add('hidden');
+    optionsPanel.classList.remove('show', 'is-open');
+    optionsPanel.style.display = 'none';
+    btnOptions.classList.remove('is-open', 'active');
+  }
+
+  btnOptions.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (isPanelOpen()) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  });
+
+  optionsPanel.addEventListener('click', (e) => {
+    e.stopPropagation();
   });
 
   window.addEventListener('click', (e) => {
-    if (!e.target.closest('.dropdown-options-wrap')) {
-      optionsDropdownMenu.classList.add('hidden');
-      btnToggleOptionsMenu.classList.remove('is-open');
+    if (!optionsPanel.contains(e.target) && e.target !== btnOptions && !btnOptions.contains(e.target)) {
+      closeMenu();
     }
   });
 }
 
-// -------------------------------------------------------------
-// Formatowanie czasu trwania i paska postępu DT
-// -------------------------------------------------------------
 function formatDuration(ms) {
   if (ms === undefined || ms === null || isNaN(ms)) return '< 1m';
   const absMs = Math.abs(ms);
@@ -185,9 +674,6 @@ function toDatetimeLocalString(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// -------------------------------------------------------------
-// BIEŻĄCE PRZELICZANIE KOŃCA OKNA DOWNTIME
-// -------------------------------------------------------------
 function syncDowntimeEndTime(source) {
   const now = new Date();
 
@@ -250,22 +736,13 @@ function syncDowntimeEndTime(source) {
   }
 }
 
-if (dtPresetSelect) {
-  dtPresetSelect.addEventListener('change', () => syncDowntimeEndTime('preset'));
-}
-
-if (dtCustomMinutes) {
-  dtCustomMinutes.addEventListener('input', () => syncDowntimeEndTime('minutes'));
-}
-
+if (dtPresetSelect) dtPresetSelect.addEventListener('change', () => syncDowntimeEndTime('preset'));
+if (dtCustomMinutes) dtCustomMinutes.addEventListener('input', () => syncDowntimeEndTime('minutes'));
 if (dtCalendarInput) {
   dtCalendarInput.addEventListener('input', () => syncDowntimeEndTime('calendar'));
   dtCalendarInput.addEventListener('change', () => syncDowntimeEndTime('calendar'));
 }
 
-// -------------------------------------------------------------
-// Toast & Schowek
-// -------------------------------------------------------------
 let toastTimer = null;
 function showToast(message) {
   if (!copyToast) return;
@@ -282,84 +759,6 @@ function copyToClipboard(text, label) {
   showToast(`📋 Skopiowano ${label}: ${text}`);
 }
 
-// -------------------------------------------------------------
-// RESIZING KOLUMN JAK W EXCELU
-// -------------------------------------------------------------
-function applyColumnWidths() {
-  let styleTag = document.getElementById('dynamic-grid-styles');
-  if (!styleTag) {
-    styleTag = document.createElement('style');
-    styleTag.id = 'dynamic-grid-styles';
-    document.head.appendChild(styleTag);
-  }
-
-  styleTag.innerHTML = `
-    :root, .table-header-row, body[data-view="compact"] .alert-item {
-      --col-status: ${colWidths.status}px !important;
-      --col-time: ${colWidths.time}px !important;
-      --col-host: ${colWidths.host}px !important;
-      --col-service: ${colWidths.service}px !important;
-    }
-  `;
-}
-
-function initColumnResizers() {
-  const saved = JSON.parse(localStorage.getItem('opshub_col_widths') || '{}');
-  colWidths = { ...colWidths, ...saved };
-  applyColumnWidths();
-
-  const resizers = document.querySelectorAll('.col-resizer');
-  resizers.forEach(resizer => {
-    resizer.addEventListener('mousedown', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      const colName = resizer.getAttribute('data-col');
-      const startX = e.clientX;
-      const startWidth = colWidths[colName] || 150;
-
-      document.body.classList.add('is-col-resizing');
-      resizer.classList.add('is-active');
-
-      function onMouseMove(moveEvent) {
-        const delta = moveEvent.clientX - startX;
-        const newWidth = Math.max(45, Math.round(startWidth + delta));
-        colWidths[colName] = newWidth;
-        applyColumnWidths();
-      }
-
-      function onMouseUp() {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        document.body.classList.remove('is-col-resizing');
-        resizer.classList.remove('is-active');
-        localStorage.setItem('opshub_col_widths', JSON.stringify(colWidths));
-      }
-
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
-    });
-  });
-}
-
-// -------------------------------------------------------------
-// Sortowanie interaktywne
-// -------------------------------------------------------------
-document.querySelectorAll('.col-sortable').forEach(header => {
-  header.addEventListener('click', (e) => {
-    if (e.target.closest('.col-resizer')) return;
-    const field = header.getAttribute('data-sort');
-    if (sortField === field) {
-      sortAsc = !sortAsc;
-    } else {
-      sortField = field;
-      sortAsc = field !== 'state' && field !== 'duration';
-    }
-    updateSortIcons();
-    renderAlerts();
-  });
-});
-
 function updateSortIcons() {
   const iconState = document.getElementById('sort-state-icon');
   const iconDuration = document.getElementById('sort-duration-icon');
@@ -372,9 +771,6 @@ function updateSortIcons() {
   if (iconService) iconService.innerText = sortField === 'service' ? (sortAsc ? '▲' : '▼') : '';
 }
 
-// -------------------------------------------------------------
-// Widok: Kompaktowy vs Karty
-// -------------------------------------------------------------
 function setViewMode(mode) {
   document.body.setAttribute('data-view', mode);
   localStorage.setItem('opshub_view', mode);
@@ -389,9 +785,6 @@ function setViewMode(mode) {
 if (btnViewCompact) btnViewCompact.addEventListener('click', () => setViewMode('compact'));
 if (btnViewCards) btnViewCards.addEventListener('click', () => setViewMode('cards'));
 
-// -------------------------------------------------------------
-// Silnik motywów
-// -------------------------------------------------------------
 const defaultCustomTheme = {
   bgApp: '#0b0c0e',
   bgCard: '#15181c',
@@ -613,7 +1006,9 @@ function matchesSearchQuery(item, query) {
   if (!query) return true;
   const rawCleanHost = String(item.host || '').replace(/^\[KARMA\]\s*/, '');
   const noteText = item.localNote ? ` ${item.localNote}` : '';
-  const targetText = `${rawCleanHost} ${item.service} ${item.output}${noteText}`.toLowerCase();
+  const dtCommentText = item.downtimeComment ? ` ${item.downtimeComment}` : '';
+  const ackCommentText = item.ackComment ? ` ${item.ackComment}` : '';
+  const targetText = `${rawCleanHost} ${item.service} ${item.output}${noteText}${dtCommentText}${ackCommentText}`.toLowerCase();
   const tokens = query.split(/\s+/).filter(Boolean);
 
   for (const token of tokens) {
@@ -640,9 +1035,6 @@ function matchesSearchQuery(item, query) {
   return true;
 }
 
-// -------------------------------------------------------------
-// Telemetria NOC i Aktywne Filtry Pigułek (Z LICZNIKAMI ACKED I DT)
-// -------------------------------------------------------------
 function updateTelemetry(alerts) {
   let crit = 0;
   let warn = 0;
@@ -690,6 +1082,8 @@ function setMetricFilter(filterName) {
   } else {
     activeMetricFilter = filterName;
   }
+
+  applyColumnWidths();
   updateMetricPillVisuals();
   renderAlerts();
 }
@@ -735,21 +1129,17 @@ function updateBulkBarUI(visibleItemsCount) {
     }
   }
 
-  // TWARDE STEROWANIE WIDOCZNOŚCIĄ PRZYCISKÓW DOKU
   const isAckedView = (activeMetricFilter === 'acked');
   const isDtView = (activeMetricFilter === 'dt');
 
-  // UNACK: wyłącznie w widoku ACKED
   if (btnBulkUnack) {
     btnBulkUnack.classList.toggle('hidden', !isAckedView);
     btnBulkUnack.style.setProperty('display', isAckedView ? 'inline-flex' : 'none', 'important');
   }
-  // ACK: w głównym widoku (ukryj w ACKED i DT)
   if (btnBulkAck) {
     btnBulkAck.classList.toggle('hidden', isAckedView || isDtView);
     btnBulkAck.style.setProperty('display', (isAckedView || isDtView) ? 'none' : 'inline-flex', 'important');
   }
-  // REMOVE DT: wyłącznie w widoku DT
   if (btnBulkRemoveDt) {
     btnBulkRemoveDt.classList.toggle('hidden', !isDtView);
     btnBulkRemoveDt.style.setProperty('display', isDtView ? 'inline-flex' : 'none', 'important');
@@ -757,12 +1147,12 @@ function updateBulkBarUI(visibleItemsCount) {
       btnBulkRemoveDt.innerHTML = `🛑 Remove DT (<span class="bulk-count-num">${count}</span>)`;
     }
   }
-  // DT: w głównym widoku (ukryj w DT i ACKED)
   if (btnBulkDt) {
     btnBulkDt.classList.toggle('hidden', isDtView || isAckedView);
     btnBulkDt.style.setProperty('display', (isDtView || isAckedView) ? 'none' : 'inline-flex', 'important');
   }
 
+  const selectAllCheckbox = document.getElementById('select-all-checkbox');
   if (selectAllCheckbox) {
     if (count === 0) {
       selectAllCheckbox.checked = false;
@@ -799,6 +1189,11 @@ function renderAlerts() {
     const hideDone = hideDoneCheckbox?.checked || false;
     const isGrouped = groupHostsCheckbox?.checked || false;
     const isCompact = document.body.getAttribute('data-view') === 'compact';
+    const isDtView = (activeMetricFilter === 'dt');
+    const isAckedView = (activeMetricFilter === 'acked');
+
+    renderTableHeader();
+    applyColumnWidths();
 
     let filtered = (currentAlerts || []).filter(item => {
       if (hideDone && item.isLocallyDone) return false;
@@ -806,7 +1201,6 @@ function renderAlerts() {
       if (activeSourceFilter === 'karma' && !item.isKarma) return false;
       if (activeSourceFilter === 'icinga' && item.isKarma) return false;
 
-      // FILTRY WIDOKÓW
       if (activeMetricFilter === 'dt') {
         if (!item.inDowntime) return false;
       } else if (activeMetricFilter === 'acked') {
@@ -933,7 +1327,7 @@ function renderAlerts() {
         stateBadgeClass = 'unknown'; stateBadgeText = 'UNKNOWN';
       }
 
-      // WIDŻET PASEK POSTĘPU DOWNTIME (INSPIROWANY ICINGA DB)
+      // WIDŻET PASEK POSTĘPU DT (POKAZYWANY TYLKO W WIDOKU DT)
       let dtBadgeHtml = '';
       if (a.inDowntime) {
         const now = Date.now();
@@ -947,8 +1341,7 @@ function renderAlerts() {
           <div class="dt-progress-badge" title="Koniec DT: ${a.downtimeEndMs ? new Date(a.downtimeEndMs).toLocaleString() : 'aktywne'} (Pozostało: ${pctRemaining}%)">
             <div class="dt-progress-bar" style="width: ${pctRemaining}%;"></div>
             <div class="dt-progress-content">
-              <span class="dt-progress-icon">⏳</span>
-              <span class="dt-progress-text">${formatRemainingDtTime(a.downtimeEndMs)}</span>
+              <span>⏳ ${formatRemainingDtTime(a.downtimeEndMs)}</span>
             </div>
           </div>
         `;
@@ -959,7 +1352,6 @@ function renderAlerts() {
           ? `<span class="badge badge-source-karma">KARMA</span>` 
           : `<span class="badge badge-source-icinga">ICINGA</span>`}
         <span class="badge ${stateBadgeClass}">${stateBadgeText}</span>
-        ${dtBadgeHtml}
         ${a.acknowledged ? `<span class="badge badge-ack">ACK</span>` : ''}
         ${a.isLocallyDone ? `<span class="badge badge-done">DONE</span>` : ''}
       `;
@@ -1005,36 +1397,93 @@ function renderAlerts() {
         </span>
       ` : '';
 
+      const dtCommentVal = a.downtimeComment || 'Brak komentarza';
+      const ackCommentVal = a.ackComment || 'Brak komentarza';
+
       if (isCompact) {
-        return `
-          <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
-            <div class="row-check">
-              <input type="checkbox" class="row-checkbox" data-key="${escapeHtml(a.key)}" data-index="${index}" ${isSelected ? 'checked' : ''} />
-            </div>
-
-            <div class="row-status">${badgesHtml}</div>
-
-            <div class="row-time" title="Czas trwania">${formatDuration(a.durationMs)}</div>
-            
-            <div class="row-host-wrap">
-              <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kliknij, aby zaznaczyć i skopiować host">
-                <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+        if (isDtView) {
+          // UKŁAD 9 KOLUMN W WIDOKU DT
+          return `
+            <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
+              <div class="row-check">
+                <input type="checkbox" class="row-checkbox" data-key="${escapeHtml(a.key)}" data-index="${index}" ${isSelected ? 'checked' : ''} />
               </div>
-              ${groupToggleBtn}
+              <div class="row-status">${badgesHtml}</div>
+              <div class="row-dt-time">${dtBadgeHtml}</div>
+              <div class="row-time" title="Czas trwania awarii">${formatDuration(a.durationMs)}</div>
+              <div class="row-host-wrap">
+                <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kliknij, aby skopiować host">
+                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+                </div>
+                ${groupToggleBtn}
+              </div>
+              <div class="row-service copyable-cell" data-copy-type="usługę" data-copy-val="${escapeHtml(a.service)}" title="Kliknij, aby skopiować usługę">
+                <span class="service-text">${escapeHtml(a.service)}</span>
+                ${noteTagHtml}
+              </div>
+              <div class="row-dt-comment copyable-cell" data-copy-type="komentarz DT" data-copy-val="${escapeHtml(dtCommentVal)}" title="Komentarz DT: ${escapeHtml(dtCommentVal)} (Kliknij, aby skopiować)">
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">💬 ${escapeHtml(dtCommentVal)}</span>
+              </div>
+              <div class="row-output copyable-cell" data-copy-type="komunikat błędu" data-copy-val="${escapeHtml(a.output)}" title="Kliknij, aby skopiować błąd">
+                ${escapeHtml(a.output)}
+              </div>
+              <div class="row-actions">${actionsHtml}</div>
             </div>
-
-            <div class="row-service copyable-cell" data-copy-type="usługę" data-copy-val="${escapeHtml(a.service)}" title="Kliknij, aby zaznaczyć i skopiować usługę">
-              <span class="service-text">${escapeHtml(a.service)}</span>
-              ${noteTagHtml}
+          `;
+        } else if (isAckedView) {
+          // UKŁAD 8 KOLUMN W WIDOKU ACKED (Z KOMENTARZEM Z SERWERA ICINGA DB)
+          return `
+            <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
+              <div class="row-check">
+                <input type="checkbox" class="row-checkbox" data-key="${escapeHtml(a.key)}" data-index="${index}" ${isSelected ? 'checked' : ''} />
+              </div>
+              <div class="row-status">${badgesHtml}</div>
+              <div class="row-time" title="Czas trwania">${formatDuration(a.durationMs)}</div>
+              <div class="row-host-wrap">
+                <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kliknij, aby skopiować host">
+                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+                </div>
+                ${groupToggleBtn}
+              </div>
+              <div class="row-service copyable-cell" data-copy-type="usługę" data-copy-val="${escapeHtml(a.service)}" title="Kliknij, aby skopiować usługę">
+                <span class="service-text">${escapeHtml(a.service)}</span>
+                ${noteTagHtml}
+              </div>
+              <div class="row-ack-comment copyable-cell" data-copy-type="komentarz Ack" data-copy-val="${escapeHtml(ackCommentVal)}" title="Komentarz Ack: ${escapeHtml(ackCommentVal)} (Kliknij, aby skopiować)">
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">💬 ${escapeHtml(ackCommentVal)}</span>
+              </div>
+              <div class="row-output copyable-cell" data-copy-type="komunikat błędu" data-copy-val="${escapeHtml(a.output)}" title="Kliknij, aby skopiować błąd">
+                ${escapeHtml(a.output)}
+              </div>
+              <div class="row-actions">${actionsHtml}</div>
             </div>
-
-            <div class="row-output copyable-cell" data-copy-type="komunikat błędu" data-copy-val="${escapeHtml(a.output)}" title="Kliknij, aby zaznaczyć i skopiować błąd">
-              ${escapeHtml(a.output)}
+          `;
+        } else {
+          // UKŁAD 7 KOLUMN DLA WIDOKU GŁÓWNEGO
+          return `
+            <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
+              <div class="row-check">
+                <input type="checkbox" class="row-checkbox" data-key="${escapeHtml(a.key)}" data-index="${index}" ${isSelected ? 'checked' : ''} />
+              </div>
+              <div class="row-status">${badgesHtml}</div>
+              <div class="row-time" title="Czas trwania">${formatDuration(a.durationMs)}</div>
+              <div class="row-host-wrap">
+                <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kliknij, aby skopiować host">
+                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+                </div>
+                ${groupToggleBtn}
+              </div>
+              <div class="row-service copyable-cell" data-copy-type="usługę" data-copy-val="${escapeHtml(a.service)}" title="Kliknij, aby skopiować usługę">
+                <span class="service-text">${escapeHtml(a.service)}</span>
+                ${noteTagHtml}
+              </div>
+              <div class="row-output copyable-cell" data-copy-type="komunikat błędu" data-copy-val="${escapeHtml(a.output)}" title="Kliknij, aby skopiować błąd">
+                ${escapeHtml(a.output)}
+              </div>
+              <div class="row-actions">${actionsHtml}</div>
             </div>
-
-            <div class="row-actions">${actionsHtml}</div>
-          </div>
-        `;
+          `;
+        }
       } else {
         return `
           <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
@@ -1050,6 +1499,8 @@ function renderAlerts() {
                   ${noteTagHtml}
                 </div>
                 <span class="row-time" style="margin-left: 8px;">⏳ ${formatDuration(a.durationMs)}</span>
+                ${a.inDowntime ? `<span style="margin-left: 8px;">${dtBadgeHtml}</span>` : ''}
+                ${(isAckedView && a.ackComment) ? `<span class="row-ack-comment" style="margin-left: 8px;">💬 ${escapeHtml(a.ackComment)}</span>` : ''}
               </div>
               <div class="row-status">${badgesHtml}</div>
             </div>
@@ -1072,9 +1523,7 @@ function renderAlerts() {
   }
 }
 
-// -------------------------------------------------------------
-// OBSŁUGA PRAWEGO PRZYCISKU MYSZY (OPEN IN SSH CONTEXT MENU)
-// -------------------------------------------------------------
+// OBSŁUGA PPM
 if (container) {
   container.addEventListener('contextmenu', (e) => {
     const item = e.target.closest('.alert-item');
@@ -1091,13 +1540,17 @@ if (container) {
       service: alert.service,
       output: alert.output,
       localNote: alert.localNote,
-      isKarma: alert.isKarma
+      isKarma: alert.isKarma,
+      downtimeComment: alert.downtimeComment || '',
+      osType: alert.osType || 'unknown',
+      ackComment: alert.ackComment || '',
+      isWindows: Boolean(alert.isWindows)
     });
   });
 
   container.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
-    if (e.target.closest('button, textarea, select, .col-resizer, .handover-tag')) return;
+    if (e.target.closest('button, textarea, select, .col-resizer, .handover-tag, .row-dt-comment, .row-ack-comment')) return;
 
     const item = e.target.closest('.alert-item');
     if (!item) {
@@ -1194,18 +1647,6 @@ if (container) {
   });
 }
 
-if (selectAllCheckbox) {
-  selectAllCheckbox.addEventListener('click', (e) => {
-    const checkAll = e.target.checked;
-    if (checkAll) {
-      currentlyRenderedAlerts.forEach(a => selectedKeys.add(a.key));
-    } else {
-      currentlyRenderedAlerts.forEach(a => selectedKeys.delete(a.key));
-    }
-    syncDomSelectionVisuals();
-  });
-}
-
 if (btnBulkClear) {
   btnBulkClear.addEventListener('click', () => {
     selectedKeys.clear();
@@ -1213,9 +1654,6 @@ if (btnBulkClear) {
   });
 }
 
-// -------------------------------------------------------------
-// KOPIOWANIE H - S (DOCK MASOWY)
-// -------------------------------------------------------------
 if (btnBulkCopyHs) {
   btnBulkCopyHs.addEventListener('click', () => {
     const selectedAlerts = (currentAlerts || []).filter(a => selectedKeys.has(a.key));
@@ -1232,9 +1670,6 @@ if (btnBulkCopyHs) {
   });
 }
 
-// -------------------------------------------------------------
-// REFRESH W DOLNYM DOKU
-// -------------------------------------------------------------
 if (btnBulkRefresh) {
   btnBulkRefresh.addEventListener('click', async () => {
     const orig = btnBulkRefresh.innerText;
@@ -1251,9 +1686,6 @@ if (btnBulkRefresh) {
   });
 }
 
-// -------------------------------------------------------------
-// HURTOWY UNACK W DOLNYM DOKU (WIDOK ACKED)
-// -------------------------------------------------------------
 if (btnBulkUnack) {
   btnBulkUnack.addEventListener('click', async () => {
     const selectedAlerts = (currentAlerts || []).filter(a => selectedKeys.has(a.key));
@@ -1273,6 +1705,7 @@ if (btnBulkUnack) {
         const ok = await window.api?.removeAckService(a.id, a.host, a.service);
         if (ok) {
           a.acknowledged = false;
+          a.ackComment = '';
           success++;
         }
       } catch (e) {}
@@ -1286,9 +1719,6 @@ if (btnBulkUnack) {
   });
 }
 
-// -------------------------------------------------------------
-// HURTOWY REMOVE DOWNTIME W DOLNYM DOKU (WIDOK DT)
-// -------------------------------------------------------------
 if (btnBulkRemoveDt) {
   btnBulkRemoveDt.addEventListener('click', async () => {
     const selectedAlerts = (currentAlerts || []).filter(a => selectedKeys.has(a.key));
@@ -1311,6 +1741,7 @@ if (btnBulkRemoveDt) {
           a.downtimeId = null;
           a.downtimeName = null;
           a.downtimeEndMs = null;
+          a.downtimeComment = '';
           success++;
         }
       } catch (e) {}
@@ -1324,9 +1755,6 @@ if (btnBulkRemoveDt) {
   });
 }
 
-// -------------------------------------------------------------
-// KOPIOWANIE NOTATEK (DOCK MASOWY)
-// -------------------------------------------------------------
 if (btnBulkCopyNotes) {
   btnBulkCopyNotes.addEventListener('click', () => {
     const selectedAlerts = (currentAlerts || []).filter(a => selectedKeys.has(a.key) && a.localNote);
@@ -1340,9 +1768,7 @@ if (btnBulkCopyNotes) {
   });
 }
 
-// -------------------------------------------------------------
 // DOWNTIME
-// -------------------------------------------------------------
 function openSingleDowntimeModal(id, host, service) {
   pendingDtTarget = { id, host, service, isBulk: false };
   if (dtModalTitle) dtModalTitle.innerText = '⏳ Zaplanuj Downtime';
@@ -1411,7 +1837,6 @@ async function submitDowntimeModal() {
       }
     }
   } else {
-    // Odczyt z pola minut – dokładnie tyle, ile wpisano (np. 5)
     minutes = parseInt(dtCustomMinutes ? dtCustomMinutes.value : preset, 10) || parseInt(preset, 10) || 60;
     const target = new Date(now.getTime() + minutes * 60000);
     finalEnd = formatIcingaDt(target);
@@ -1424,13 +1849,7 @@ async function submitDowntimeModal() {
     const selectedAlerts = (currentAlerts || []).filter(a => selectedKeys.has(a.key));
     const icingaAlerts = selectedAlerts.filter(a => !a.isKarma);
 
-    const targetKeys = new Set(icingaAlerts.map(a => a.key));
-    currentAlerts.forEach(a => {
-      if (targetKeys.has(a.key)) a.inDowntime = true;
-    });
     selectedKeys.clear();
-    renderAlerts();
-
     showToast(`⏳ Planuję DT (${minutes}m) dla ${icingaAlerts.length} pozycji...`);
     let dtSuccess = 0;
     for (const a of icingaAlerts) {
@@ -1443,11 +1862,7 @@ async function submitDowntimeModal() {
     showToast(`⏳ Zlecono Downtime dla ${dtSuccess}/${icingaAlerts.length} pozycji!`);
     setTimeout(() => window.api?.refreshNow(), 1500);
   } else {
-    const { id, host, service, key } = pendingDtTarget;
-
-    const found = currentAlerts.find(a => a.id === id || a.key === key);
-    if (found) found.inDowntime = true;
-    renderAlerts();
+    const { id, host, service } = pendingDtTarget;
 
     try {
       const ok = await window.api?.downtimeService(id, host, service, minutes, comment, finalStart, finalEnd);
@@ -1472,9 +1887,7 @@ if (btnCancelDtModal) {
   });
 }
 
-// -------------------------------------------------------------
 // AKCJE DONE & UNDONE
-// -------------------------------------------------------------
 function handleDoneClick(key, host, service, isLocallyDone) {
   if (isLocallyDone) {
     const alert = currentAlerts.find(a => a.key === key);
@@ -1600,9 +2013,7 @@ if (btnCancelDoneModal) {
   });
 }
 
-// -------------------------------------------------------------
 // AKCJE MASOWE (RECHECK & ACK)
-// -------------------------------------------------------------
 if (btnBulkRecheck) {
   btnBulkRecheck.addEventListener('click', async () => {
     const count = selectedKeys.size;
@@ -1680,12 +2091,19 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// OBSŁUGA ZAKŁADEK
 tabButtons.forEach(btn => {
+  if (btn.textContent && btn.textContent.includes('Opcje widoku')) return;
+  if (btn.id === 'btn-toggle-options-menu' || btn.classList.contains('dropdown-toggle')) return;
+
   btn.addEventListener('click', () => {
-    tabButtons.forEach(b => b.classList.remove('active'));
+    tabButtons.forEach(b => {
+      if (!b.textContent.includes('Opcje widoku')) b.classList.remove('active');
+    });
     btn.classList.add('active');
     activeSourceFilter = btn.getAttribute('data-filter') || 'all';
     activeMetricFilter = null;
+    applyColumnWidths();
     updateMetricPillVisuals();
     renderAlerts();
   });
@@ -1704,7 +2122,6 @@ async function handleRecheck(id, host, service, btn) {
   setTimeout(() => { btn.innerText = orig; btn.disabled = false; }, 3000);
 }
 
-// POJEDYNCZY UNACK Z GŁÓWNEJ LISTY
 async function handleRemoveAck(id, host, service, btn) {
   const orig = btn ? btn.innerText : '🔓 Unack';
   if (btn) { btn.innerText = '⏳'; btn.disabled = true; }
@@ -1713,9 +2130,6 @@ async function handleRemoveAck(id, host, service, btn) {
     const ok = await window.api?.removeAckService(id, host, service);
     if (ok) {
       showToast(`🔓 Zdjęto potwierdzenie (Unack): ${host} ➔ ${service}`);
-      const found = currentAlerts.find(a => a.id === id || a.key === `${host}!${service}!${id}`);
-      if (found) found.acknowledged = false;
-      renderAlerts();
       setTimeout(() => window.api?.refreshNow(), 1500);
     } else {
       showToast('❌ Błąd usuwania potwierdzenia');
@@ -1728,7 +2142,6 @@ async function handleRemoveAck(id, host, service, btn) {
   setTimeout(() => { if (btn) { btn.innerText = orig; btn.disabled = false; } }, 2000);
 }
 
-// POJEDYNCZY REMOVE DOWNTIME
 async function handleRemoveDowntime(id, host, service, dtName, dtId, btn) {
   const orig = btn ? btn.innerText : '🛑 End DT';
   if (btn) { btn.innerText = '⏳'; btn.disabled = true; }
@@ -1737,14 +2150,6 @@ async function handleRemoveDowntime(id, host, service, dtName, dtId, btn) {
     const ok = await window.api?.removeDowntimeService(id, host, service, dtName, dtId);
     if (ok) {
       showToast(`🛑 Zdjęto okno prac (Downtime): ${host} ➔ ${service}`);
-      const found = currentAlerts.find(a => a.id === id || a.key === `${host}!${service}!${id}`);
-      if (found) {
-        found.inDowntime = false;
-        found.downtimeId = null;
-        found.downtimeName = null;
-        found.downtimeEndMs = null;
-      }
-      renderAlerts();
       setTimeout(() => window.api?.refreshNow(), 1500);
     } else {
       showToast('❌ Błąd usuwania okna prac');
@@ -1786,14 +2191,7 @@ async function submitAckModal() {
     const icingaAlerts = selectedAlerts.filter(a => !a.isKarma);
 
     closeAckModal();
-
-    const targetKeys = new Set(icingaAlerts.map(a => a.key));
-    currentAlerts.forEach(a => {
-      if (targetKeys.has(a.key)) a.acknowledged = true;
-    });
     selectedKeys.clear();
-    renderAlerts();
-
     showToast(`⏳ Wysyłam Ack do ${icingaAlerts.length} alertów...`);
 
     let ackSuccess = 0;
@@ -1810,12 +2208,8 @@ async function submitAckModal() {
   }
 
   if (!pendingAck) return;
-  const { id, host, service, key } = pendingAck;
+  const { id, host, service } = pendingAck;
   closeAckModal();
-
-  const found = currentAlerts.find(a => a.id === id || a.key === key || a.key.startsWith(`${host}!${service}`));
-  if (found) found.acknowledged = true;
-  renderAlerts();
 
   try {
     const ok = await window.api?.ackService(id, host, service, comment, isPersistent);
@@ -1855,9 +2249,7 @@ if (btnClearDone) {
   });
 }
 
-// -------------------------------------------------------------
-// OBSŁUGA HANDOVERU (EKSPORT & IMPORT)
-// -------------------------------------------------------------
+// OBSŁUGA HANDOVERU
 if (btnExportHandover) {
   btnExportHandover.addEventListener('click', () => {
     const doneAlerts = (currentAlerts || []).filter(a => a.isLocallyDone);
@@ -1945,7 +2337,7 @@ if (btnSaveHandover) {
 
 function bootstrap() {
   initSettings();
-  updateSortIcons();
+  setupOptionsMenu();
   if (window.api?.getAlerts) {
     window.api.getAlerts().then(initial => {
       if (Array.isArray(initial) && initial.length > 0) {
@@ -1966,3 +2358,5 @@ window.api?.onAlertsUpdated?.((alerts) => {
   currentAlerts = Array.isArray(alerts) ? alerts : [];
   renderAlerts();
 });
+
+
