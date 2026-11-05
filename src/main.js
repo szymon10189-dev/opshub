@@ -9,7 +9,7 @@ let tray = null;
 let pollTimer = null;
 let cachedAlerts = [];
 const firstSeenMemory = {};
-const hostOsCache = new Map(); // Pamięć OS per host (linux | windows | unknown)
+const hostSupportCache = new Map(); // Pamięć Support D per host (true | false)
 
 const DEFAULT_ICINGA_URL = 'https://monitoring-dev.hostersi.systems';
 const DEFAULT_KARMA_URL = 'https://karma.hostersi.systems';
@@ -23,69 +23,23 @@ function getKarmaUrl() {
 }
 
 // -------------------------------------------------------------
-// HEURYSTYKA ZAPASOWA (BEZ FAŁSZYWYCH DOPASOWAŃ 'WIN' I 'HTTPS://')
+// ODCZYT CUSTOM VARIABLES 'support_hours: support D' (Z CACHEM)
 // -------------------------------------------------------------
-function fallbackDetectOs(rawHost = '', service = '', output = '') {
-  const hLower = String(rawHost || '').toLowerCase();
-  const sLower = String(service || '').toLowerCase();
-  const outLower = String(output || '').toLowerCase();
-  const combined = `${hLower} ${sLower} ${outLower}`;
+async function resolveHostSupport(cleanHost, rawObj) {
+  if (!cleanHost || cleanHost === 'Cluster' || cleanHost === 'Host') return false;
 
-  // 1. Zabezpieczenie przed usługami zarządzanymi AWS (RDS, Aurora, ALB, ElastiCache)
-  const isAwsManaged = /(^|[-_.])(rds|aurora|elasticache|redis|memcached|alb|nlb|elb|s3|sqs|sns|lambda|dynamodb|apigw)([-_.]|$)/i.test(hLower)
-                    || /\b(cloudwatch|check_aws|check_rds|check_alb)\b/i.test(sLower)
-                    || /\b(CPUUtilization|FreeableMemory|FreeStorageSpace|DatabaseConnections|TargetResponseTime|HTTPCode_Target_)\b/.test(service);
-
-  if (isAwsManaged) {
-    return 'unknown';
+  if (hostSupportCache.has(cleanHost)) {
+    return hostSupportCache.get(cleanHost);
   }
 
-  // 2. Windows: tylko izolowane (win), (windows) lub dyski z ukośnikiem wstecznym C:\
-  const isWinTag = /(?:^|[\s_([{])(?:win|windows)(?:$|[\s_)\]}])/i.test(sLower);
-  const isWinDrive = /\b[c-zC-Z]:\\/.test(output) || /\bdisk\s+[c-zC-Z]:/i.test(sLower);
-  const isWinSpecific = /\b(w32time|nsclient|ncpa|wmi_exporter|windows_exporter)\b/i.test(combined);
-
-  if (isWinTag || isWinDrive || isWinSpecific) {
-    return 'windows';
-  }
-
-  // 3. Linux: ścieżki uniksowe (Disk /), Load, SSH, pakiety systemowe
-  const isLinDisk = /\bdisk\s+\//i.test(sLower) || /\/dev\/(?:mapper|sd[a-z]|nvme)/i.test(outLower);
-  const isLinMetric = /\b(load|load\s*average|apt|yum|systemd|iowait|node[-_]exporter|procs)\b/i.test(sLower);
-  const isLinTag = /(?:^|[\s_([{])(?:lin|linux)(?:$|[\s_)\]}])/i.test(sLower);
-
-  if (isLinDisk || isLinMetric || isLinTag) {
-    return 'linux';
-  }
-
-  return 'unknown';
-}
-
-// -------------------------------------------------------------
-// ODCZYT 'TYPE OF SERVER OS' Z ICINGA DB (Z CACHEM NA HOST)
-// -------------------------------------------------------------
-async function resolveHostOs(cleanHost, rawObj, service, output) {
-  if (!cleanHost || cleanHost === 'Cluster' || cleanHost === 'Host') return 'unknown';
-
-  if (hostOsCache.has(cleanHost)) {
-    return hostOsCache.get(cleanHost);
-  }
-
-  // Sprawdzenie czy w przekazanym obiekcie Icingi już są Custom Variables
   if (rawObj) {
     const sStr = JSON.stringify(rawObj);
-    const m = sStr.match(/type\s*of\s*server\s*os[\s\S]{1,60}?(linux|windows|win|unix|none|aws)/i);
-    if (m) {
-      const val = m[1].toLowerCase();
-      let res = 'unknown';
-      if (val.includes('win')) res = 'windows';
-      else if (val.includes('lin') || val.includes('unix')) res = 'linux';
-      hostOsCache.set(cleanHost, res);
-      return res;
+    if (/support[_\s-]*hours[\s\S]{1,80}?support\s*d\b/i.test(sStr) || /"support_hours"\s*:\s*"support\s*d"/i.test(sStr)) {
+      hostSupportCache.set(cleanHost, true);
+      return true;
     }
   }
 
-  // Asynchroniczne odpytanie szczegółów hosta z Icinga Web 2
   const cookies = store.get('sessionCookies');
   const icingaUrl = getIcingaUrl();
   if (cookies && icingaUrl && !cleanHost.includes(' ')) {
@@ -106,28 +60,16 @@ async function resolveHostOs(cleanHost, rawObj, service, output) {
 
       if (res.ok) {
         const text = await res.text();
-        const m = text.match(/Type\s*of\s*server\s*OS[\s\S]{1,120}?(Linux|Windows|AWS|None|Brak|Unix)/i)
-               || text.match(/["']?Type\s*of\s*server\s*OS["']?\s*[:=]\s*["']?([a-zA-Z0-9_-]+)/i);
-        if (m) {
-          const val = (m[1] || m[2] || '').toLowerCase().trim();
-          let detected = 'unknown';
-          if (val.includes('win')) detected = 'windows';
-          else if (val.includes('lin') || val.includes('unix')) detected = 'linux';
-          else if (val.includes('aws') || val.includes('none') || val.includes('brak')) detected = 'unknown';
-
-          hostOsCache.set(cleanHost, detected);
-          return detected;
-        }
+        const isD = /support[_\s-]*hours[\s\S]{1,120}?support\s*d\b/i.test(text)
+                 || /"support_hours"[\s\S]{1,60}?support\s*d/i.test(text);
+        hostSupportCache.set(cleanHost, Boolean(isD));
+        return Boolean(isD);
       }
     } catch (e) {}
   }
 
-  // Fallback heurystyczny
-  const fallback = fallbackDetectOs(cleanHost, service, output);
-  if (fallback !== 'unknown') {
-    hostOsCache.set(cleanHost, fallback);
-  }
-  return fallback;
+  hostSupportCache.set(cleanHost, false);
+  return false;
 }
 
 function createColorIcon(colorHex) {
@@ -189,24 +131,24 @@ function createTray() {
   tray.setToolTip('OpsHub — Icinga & Karma');
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Otworz okno', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { label: 'Otwórz okno', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { label: 'Zaloguj do Icinga (SSO)', click: () => startSsoLogin() },
     { label: 'Zaloguj do Karma (SSO)', click: () => startKarmaLogin() },
-    { label: 'Odswiez teraz', click: () => fetchAllMonitoringData() },
+    { label: 'Odśwież teraz', click: () => fetchAllMonitoringData() },
     { type: 'separator' },
     { 
-      label: 'Wyloguj (Wyczysc sesje Icinga)', 
+      label: 'Wyloguj (Wyczyść sesję Icinga)', 
       click: () => {
         store.set('sessionCookies', '');
-        console.log('[SSO] Sesja Icinga usunieta.');
+        console.log('[SSO] Sesja Icinga usunięta.');
         startSsoLogin();
       }
     },
     { 
-      label: 'Wyloguj (Wyczysc sesje Karma)', 
+      label: 'Wyloguj (Wyczyść sesję Karma)', 
       click: () => {
         store.set('karmaCookies', '');
-        console.log('[SSO] Sesja Karma usunieta.');
+        console.log('[SSO] Sesja Karma usunięta.');
         startKarmaLogin();
       }
     },
@@ -349,7 +291,7 @@ async function fetchIcingaRaw() {
       const items = Array.isArray(parsed) ? parsed : (parsed.data || parsed.results || []);
       return { error: null, items };
     } catch (err) {
-      console.warn(`[Icinga DB Blad]:`, err.message);
+      console.warn(`[Icinga DB Błąd]:`, err.message);
     }
   }
   return { error: 'ICINGA_FETCH_FAILED', items: [] };
@@ -489,7 +431,7 @@ async function fetchKarmaRaw() {
 
     return { error: null, items: rawAlerts };
   } catch (err) {
-    console.warn('[Karma API Wyjatek]:', err.message);
+    console.warn('[Karma API Wyjątek]:', err.message);
     return { error: err.message, items: [] };
   }
 }
@@ -538,53 +480,6 @@ function formatIcingaDateTime(date) {
   return `${Y}-${m}-${d}T${H}:${i}:${s}`;
 }
 
-function openSshTerminal(host) {
-  const cleanHost = String(host).replace(/^\[KARMA\]\s*/, '').split(':')[0].trim();
-  if (!cleanHost) return;
-
-  console.log(`[SSH Launcher] Otwieranie karty SSH dla: ${cleanHost}`);
-
-  if (process.platform === 'win32') {
-    const { exec, spawn } = require('child_process');
-    exec('where wt.exe', (wtErr) => {
-      const hasWt = !wtErr;
-      exec('where wsl.exe', (wslErr) => {
-        const hasWsl = !wslErr;
-        if (hasWt && hasWsl) {
-          exec('wsl.exe which zsh', (zshErr, stdout) => {
-            const shellBin = (!zshErr && stdout && stdout.trim()) ? 'zsh' : 'bash';
-            spawn('wt.exe', [
-              '-w', '0', 'nt',
-              '--title', `SSH: ${cleanHost}`,
-              'wsl.exe', '--cd', '~',
-              shellBin, '-lic', `ssh ${cleanHost}`
-            ], { detached: true, stdio: 'ignore' }).unref();
-          });
-        } else if (hasWt) {
-          spawn('wt.exe', ['-w', '0', 'nt', '--title', `SSH: ${cleanHost}`, 'ssh', cleanHost], { detached: true, stdio: 'ignore' }).unref();
-        } else if (hasWsl) {
-          spawn('cmd.exe', ['/c', 'start', 'wsl.exe', '--cd', '~', 'zsh', '-lic', `ssh ${cleanHost}`], { detached: true, stdio: 'ignore' }).unref();
-        } else {
-          spawn('cmd.exe', ['/c', 'start', 'powershell.exe', '-NoExit', '-Command', `ssh ${cleanHost}`], { detached: true, stdio: 'ignore' }).unref();
-        }
-      });
-    });
-  } else if (process.platform === 'darwin') {
-    const { spawn } = require('child_process');
-    const script = `tell application "Terminal"\n activate\n tell application "System Events" to tell process "Terminal" to keystroke "t" using command down\n do script "ssh ${cleanHost}" in front window\nend tell`;
-    spawn('osascript', ['-e', script], { detached: true, stdio: 'ignore' }).unref();
-  } else {
-    const { exec, spawn } = require('child_process');
-    exec('which gnome-terminal', (err) => {
-      if (!err) {
-        spawn('gnome-terminal', ['--tab', '--', 'bash', '-lic', `ssh ${cleanHost}`], { detached: true, stdio: 'ignore' }).unref();
-      } else {
-        spawn('x-terminal-emulator', ['-e', `ssh ${cleanHost}`], { detached: true, stdio: 'ignore' }).unref();
-      }
-    });
-  }
-}
-
 function unmarkLocallyDone(locallyDone, key) {
   if (!key) return;
   delete locallyDone[key];
@@ -630,12 +525,46 @@ async function fetchAllMonitoringData() {
     fetchIcingaActiveComments()
   ]);
 
+  const now = Date.now();
+
   const dtMap = new Map();
   (rawDowntimes || []).forEach(d => {
     const h = String(d['host.name'] || d.host_name || (d.host && d.host.name) || '').toLowerCase();
     const s = String(d['service.name'] || d.service_name || (d.service && d.service.name) || '').toLowerCase();
-    const startMs = parseAlertTime([d.start, d['downtime.start'], d.start_time]);
-    const endMs = parseAlertTime([d.end, d['downtime.end'], d.end_time]);
+
+    const startMs = parseAlertTime([
+      d.scheduled_start_time,
+      d.scheduled_start,
+      d['downtime.scheduled_start_time'],
+      d['downtime.scheduled_start'],
+      d.start_time,
+      d['downtime.start_time'],
+      d.start,
+      d['downtime.start']
+    ]);
+
+    let endMs = parseAlertTime([
+      d.scheduled_end_time,
+      d.scheduled_end,
+      d['downtime.scheduled_end_time'],
+      d['downtime.scheduled_end'],
+      d.end_time,
+      d['downtime.end_time'],
+      d.end,
+      d['downtime.end'],
+      d.expiry_time
+    ]);
+
+    if (!endMs && startMs) {
+      const durSec = Number(d.duration || d['downtime.duration']);
+      if (!isNaN(durSec) && durSec > 0) {
+        endMs = startMs + durSec * 1000;
+      }
+    }
+
+    if (endMs && endMs <= now) return;
+
+    const isCurrentlyActive = (!startMs || startMs <= now) && (!endMs || endMs > now);
 
     const rawComment = d.comment || d['downtime.comment'] || d.comment_data || '';
     const rawAuthor = d.author_name || d['downtime.author_name'] || d.author || '';
@@ -651,10 +580,19 @@ async function fetchAllMonitoringData() {
       name: String(d.name || d['downtime.name'] || d.downtime_name || d.id || ''),
       startMs: startMs,
       endMs: endMs,
-      comment: fullComment
+      comment: fullComment,
+      isActive: isCurrentlyActive
     };
-    if (h && s) dtMap.set(`${h}!${s}`, dtInfo);
-    if (h && !s) dtMap.set(`${h}!*`, dtInfo);
+
+    const saveIfBetter = (key) => {
+      const existing = dtMap.get(key);
+      if (!existing || (!existing.isActive && dtInfo.isActive)) {
+        dtMap.set(key, dtInfo);
+      }
+    };
+
+    if (h && s) saveIfBetter(`${h}!${s}`);
+    if (h && !s) saveIfBetter(`${h}!*`);
   });
 
   const ackMap = new Map();
@@ -690,7 +628,6 @@ async function fetchAllMonitoringData() {
   const processedList = [];
   let critCount = 0;
   let warnCount = 0;
-  const now = Date.now();
 
   // 1. KARMA
   const karmaUrl = getKarmaUrl();
@@ -787,8 +724,6 @@ async function fetchAllMonitoringData() {
 
     if (!isDone) critCount++;
 
-    const osType = fallbackDetectOs(rawHost, service, output);
-
     processedList.push({
       id: uniqueId,
       key,
@@ -809,13 +744,12 @@ async function fetchAllMonitoringData() {
       isLocallyDone: isDone,
       localNote: localNote,
       isKarma: true,
-      osType: osType,
-      isWindows: osType === 'windows',
+      isSupportD: false,
       karmaWebUrl: `${karmaUrl}/?q=%40state%3Dactive&q=severity%3Dcritical&q=alertname%21%3DRebootRequired`
     });
   }
 
-  // 2. ICINGA (Z ASYNCHRONICZNYM ODCZYTEM OS HOSTÓW)
+  // 2. ICINGA (Z DETEKCJĄ SUPPORT D)
   const icingaBaseUrl = getIcingaUrl();
   let icingaIndex = 0;
   for (const s of (icingaRes.items || [])) {
@@ -829,7 +763,7 @@ async function fetchAllMonitoringData() {
     const matchedDt = dtMap.get(`${cleanHost}!${cleanService}`) || dtMap.get(`${cleanHost}!*`) || null;
 
     const inDowntime = Boolean(
-      matchedDt ||
+      (matchedDt && matchedDt.isActive) ||
       s.service_in_downtime ||
       s.in_downtime ||
       s.is_in_downtime ||
@@ -919,13 +853,11 @@ async function fetchAllMonitoringData() {
       }
     }
 
-    if (!isDone && !acknowledged && !inDowntime) {
-      if (state === 2) critCount++;
-      if (state === 1) warnCount++;
+    let isSupportD = await resolveHostSupport(cleanHost, s);
+    if (!isSupportD && matchedDt && /support\s*d/i.test(matchedDt.comment)) {
+      isSupportD = true;
     }
 
-    // Precyzyjna detekcja systemu
-    const osType = await resolveHostOs(cleanHost, s, service, output);
     const icingaWebUrl = `${icingaBaseUrl}/icingaweb2/icingadb/service?name=${encodeURIComponent(service)}&host.name=${encodeURIComponent(cleanHost)}`;
 
     processedList.push({
@@ -948,8 +880,7 @@ async function fetchAllMonitoringData() {
       isLocallyDone: isDone,
       localNote: localNote,
       isKarma: false,
-      osType: osType,
-      isWindows: osType === 'windows',
+      isSupportD: isSupportD,
       icingaWebUrl
     });
   }
@@ -966,8 +897,17 @@ async function fetchAllMonitoringData() {
 
   cachedAlerts = processedList;
 
-  const totalActive = critCount + warnCount;
-  let status = critCount > 0 ? 'CRIT' : (warnCount > 0 ? 'WARN' : 'OK');
+  let trayCrit = 0;
+  let trayWarn = 0;
+  processedList.forEach(a => {
+    if (!a.isLocallyDone && !a.acknowledged && !a.inDowntime) {
+      if (a.state === 2) trayCrit++;
+      if (a.state === 1) trayWarn++;
+    }
+  });
+
+  const totalActive = trayCrit + trayWarn;
+  let status = trayCrit > 0 ? 'CRIT' : (trayWarn > 0 ? 'WARN' : 'OK');
   if (icingaRes.error === 'AUTH_REQUIRED' && processedList.length === 0) status = 'AUTH';
   updateTray(status, totalActive);
 
@@ -982,9 +922,9 @@ function updateTray(status, count) {
   let tooltip = 'Monitoring: Wszystko zielone';
 
   if (status === 'CRIT') { color = '#e03131'; tooltip = `Monitoring: ${count} awarii (CRITICAL)`; }
-  else if (status === 'WARN') { color = '#f59f00'; tooltip = `Monitoring: ${count} ostrzezen (WARNING)`; }
+  else if (status === 'WARN') { color = '#f59f00'; tooltip = `Monitoring: ${count} ostrzeżeń (WARNING)`; }
   else if (status === 'AUTH') { color = '#868e96'; tooltip = 'Monitoring: Wymagane logowanie SSO Icinga'; }
-  else if (status === 'ERR') { color = '#495057'; tooltip = 'Monitoring: Blad pobierania danych'; }
+  else if (status === 'ERR') { color = '#495057'; tooltip = 'Monitoring: Błąd pobierania danych'; }
 
   tray.setImage(createColorIcon(color));
   tray.setToolTip(tooltip);
@@ -1220,51 +1160,25 @@ ipcMain.handle('refresh-now', async () => { await fetchAllMonitoringData(); retu
 ipcMain.on('trigger-sso', () => startSsoLogin());
 ipcMain.on('trigger-karma-sso', () => startKarmaLogin());
 ipcMain.on('open-external-url', (_e, url) => { if (url) shell.openExternal(url); });
-ipcMain.on('open-ssh', (_e, host) => openSshTerminal(host));
 
-// -------------------------------------------------------------
-// CONTEXT MENU PPM: TYLKO LINUX LUB WINDOWS (UNKNOWN = BRAK POŁĄCZENIA)
-// -------------------------------------------------------------
-ipcMain.on('show-context-menu', (event, { host, service, output, localNote, isKarma, downtimeComment, ackComment, osType }) => {
-  const cleanHost = String(host).replace(/^\[KARMA\]\s*/, '').split(':')[0].trim();
+// CONTEXT MENU PPM (BEZ SSH I GUACAMOLE)
+ipcMain.on('show-context-menu', (event, { host, service, output, localNote, downtimeComment, ackComment }) => {
+  const rawCleanHost = String(host).replace(/^\[KARMA\]\s*/, '').split(':')[0].trim();
+  const cleanHost = rawCleanHost.replace(/[^a-zA-Z0-9.-_]/g, '');
   const cleanOutput = String(output || '').replace(/\r?\n|\r/g, ' ').trim();
   const noteText = localNote ? String(localNote).trim() : '';
   const dtCommentText = downtimeComment ? String(downtimeComment).trim() : '';
   const ackCommentText = ackComment ? String(ackComment).trim() : '';
 
-  // Sprawdzenie typu OS z cache lub fallbacku
-  let finalOs = osType;
-  if (!finalOs || finalOs === 'unknown') {
-    finalOs = hostOsCache.get(cleanHost) || fallbackDetectOs(cleanHost, service, output);
-  }
-
   const clientPrefix = cleanHost.includes('-') ? cleanHost.split('-')[0].trim() : cleanHost;
   const docsUrl = `https://readme.hostersi.systems/search?q=${encodeURIComponent(clientPrefix)}&ref=collection`;
-  const guacamoleUrl = 'https://guacamole.hostersi.systems/#/';
 
-  const menuTemplate = [];
-
-  // Jeśli nie ma pewności (AWS, chmura, brak info) -> NIE DODAJE ŻADNEJ OPCJI POŁĄCZENIA
-  if (finalOs === 'windows') {
-    menuTemplate.push({
-      label: `🖥️ Otwórz Guacamole`,
-      click: () => shell.openExternal(guacamoleUrl)
-    });
-  } else if (finalOs === 'linux') {
-    menuTemplate.push({
-      label: `🖥️ Połącz przez SSH (ssh ${cleanHost})`,
-      click: () => openSshTerminal(cleanHost)
-    });
-  }
-
-  menuTemplate.push({
-    label: `📖 Dokumentacja (${clientPrefix})`,
-    click: () => shell.openExternal(docsUrl)
-  });
-
-  menuTemplate.push({ type: 'separator' });
-
-  menuTemplate.push(
+  const menuTemplate = [
+    {
+      label: `📖 Dokumentacja (${clientPrefix})`,
+      click: () => shell.openExternal(docsUrl)
+    },
+    { type: 'separator' },
     {
       label: `📋 Kopiuj nazwę hosta (${cleanHost})`,
       click: () => { clipboard.writeText(cleanHost); }
@@ -1292,7 +1206,7 @@ ipcMain.on('show-context-menu', (event, { host, service, output, localNote, isKa
       enabled: Boolean(ackCommentText),
       click: () => { if (ackCommentText) clipboard.writeText(ackCommentText); }
     }
-  );
+  ];
 
   const menu = Menu.buildFromTemplate(menuTemplate);
   const win = BrowserWindow.fromWebContents(event.sender);

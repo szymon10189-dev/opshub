@@ -7,7 +7,6 @@ contextBridge.exposeInMainWorld('api', {
   triggerSso: () => ipcRenderer.send('trigger-sso'),
   triggerKarmaSso: () => ipcRenderer.send('trigger-karma-sso'),
   openExternal: (url) => ipcRenderer.send('open-external-url', url),
-  openSsh: (host) => ipcRenderer.send('open-ssh', host),
   showContextMenu: (data) => ipcRenderer.send('show-context-menu', data),
   toggleLocalDone: (key, note) => ipcRenderer.invoke('toggle-local-done', { key, note }),
   bulkLocalDone: (keys, note) => ipcRenderer.invoke('bulk-local-done', { keys, note }),

@@ -5,6 +5,7 @@
   --col-host: 250px;
   --col-service: 230px;
   --col-actions: 235px;
+  --app-font-scale: 1;
 }
 
 :root, body[data-theme="obsidian"] {
@@ -237,7 +238,6 @@ body[data-theme="monokai"] {
   --selected-glow: rgba(166, 226, 46, 0.35);
 }
 
-/* WŁASNY MOTYW: KOLOR DLA WSZYSTKICH TEKSTÓW */
 body[data-theme="custom"] .row-host,
 body[data-theme="custom"] .row-service,
 body[data-theme="custom"] .service-text,
@@ -260,6 +260,7 @@ body {
   height: 100vh;
   overflow: hidden;
   user-select: none;
+  font-size: calc(12px * var(--app-font-scale)) !important;
 }
 
 body.is-drag-selecting,
@@ -385,10 +386,77 @@ body.is-col-resizing * {
   animation: pulse-live 1s infinite;
 }
 
+.stat-acked {
+  border-color: rgba(134, 142, 150, 0.25);
+}
+.stat-acked.has-alerts {
+  background: rgba(108, 117, 125, 0.16) !important;
+  border-color: rgba(173, 181, 189, 0.45) !important;
+  color: #adb5bd !important;
+}
+.stat-acked.has-alerts strong { color: #f8f9fa !important; }
+.stat-acked.has-alerts .stat-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #adb5bd;
+  box-shadow: 0 0 6px rgba(173, 181, 189, 0.6);
+}
+
+.stat-dt {
+  border-color: rgba(25, 113, 194, 0.25);
+}
+.stat-dt.has-alerts {
+  background: rgba(25, 113, 194, 0.18) !important;
+  border-color: rgba(51, 154, 240, 0.45) !important;
+  color: #74c0fc !important;
+}
+.stat-dt.has-alerts strong { color: #e7f5ff !important; }
+.stat-dt.has-alerts .stat-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #339af0;
+  box-shadow: 0 0 6px rgba(51, 154, 240, 0.6);
+}
+
+/* PASTYLKA DT D */
+.stat-dt-d {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.stat-dt-d strong {
+  color: #ffd43b !important;
+}
+.stat-dt-d.has-alerts {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: #10b981 !important;
+  color: #6ee7b7 !important;
+}
+.stat-dt-d.has-alerts .stat-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+}
+
 .stat-pill.is-active {
   box-shadow: 0 0 0 2px var(--accent), 0 2px 10px rgba(0, 0, 0, 0.45) !important;
   filter: brightness(1.25) !important;
   border-color: var(--accent) !important;
+}
+.stat-dt.is-active {
+  box-shadow: 0 0 0 2px #339af0, 0 2px 10px rgba(0, 0, 0, 0.45) !important;
+  border-color: #74c0fc !important;
+}
+.stat-acked.is-active {
+  box-shadow: 0 0 0 2px #adb5bd, 0 2px 10px rgba(0, 0, 0, 0.45) !important;
+  border-color: #f8f9fa !important;
+}
+.stat-dt-d.is-active {
+  box-shadow: 0 0 0 2px #10b981, 0 2px 10px rgba(0, 0, 0, 0.45) !important;
+  filter: brightness(1.25) !important;
+  border-color: #34d399 !important;
 }
 
 .top-actions {
@@ -573,14 +641,12 @@ body.is-col-resizing * {
 .checkbox-pill { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); cursor: pointer; }
 
 /* ==========================================================================
-   UKŁAD KOLUMN TABELI & KRESECZKI RESIZERA
+   UKŁAD SIATKI TABELI (ELASTYCZNY, ZARZĄDZANY DYNAMICZNIE PRZEZ APP.JS)
    ========================================================================== */
-
 .table-header-row, body[data-view="compact"] .alert-item {
-  display: grid;
-  grid-template-columns: var(--col-check) var(--col-status) var(--col-time) var(--col-host) var(--col-service) minmax(130px, 1fr) var(--col-actions);
-  align-items: center;
-  gap: 8px;
+  display: grid !important;
+  align-items: center !important;
+  gap: 8px !important;
 }
 
 .table-header-row .col-cell,
@@ -609,7 +675,6 @@ body[data-view="compact"] .alert-item > div {
   overflow: visible !important;
 }
 
-/* WIDOCZNY, SZEROKI RESIZER KOLUMN (16px Z GŁĘBOKĄ KRESKĄ) */
 .col-resizer {
   position: absolute;
   right: -8px;
@@ -660,7 +725,7 @@ body[data-theme="daylight"] .col-resizer::after {
 }
 .col-sortable:hover { color: var(--text-main); }
 .sort-indicator { font-size: 9px; color: var(--accent); }
-.col-actions-cell { text-align: right; }
+.col-actions-cell { text-align: right; justify-self: end; padding-right: 4px; }
 
 body[data-view="cards"] .table-header-row {
   display: none;
@@ -738,11 +803,12 @@ body[data-view="compact"] .row-status {
   align-items: center;
   gap: 4px;
   overflow: hidden;
+  min-width: 0 !important;
 }
 
 .row-time {
   font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 10px;
+  font-size: calc(10px * var(--app-font-scale));
   font-weight: 700;
   color: var(--text-muted);
   white-space: nowrap;
@@ -763,7 +829,6 @@ body[data-theme="daylight"] .copyable-cell:hover {
   background: rgba(0, 0, 0, 0.06);
 }
 
-/* KONTENER HOSTA: PRZYCISK ROZWIJANIA NIGDY NIE ZNIKA */
 .row-host-wrap {
   display: flex;
   align-items: center;
@@ -775,7 +840,7 @@ body[data-theme="daylight"] .copyable-cell:hover {
 .row-host-wrap .row-host {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--app-font-scale));
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -798,7 +863,7 @@ body[data-theme="daylight"] .copyable-cell:hover {
 .btn-group-toggle:hover { background: var(--accent); color: #000; }
 
 body[data-view="compact"] .row-service {
-  font-size: 11px;
+  font-size: calc(11px * var(--app-font-scale));
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -810,36 +875,47 @@ body[data-view="compact"] .row-service {
 
 body[data-view="compact"] .row-output {
   font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: calc(11px * var(--app-font-scale));
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
   color: var(--text-muted);
+  padding-right: 6px !important;
 }
 body[data-view="compact"] .alert-item:hover .row-output {
   color: var(--text-main);
 }
 
 body[data-view="compact"] .row-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 4px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 3px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .btn-act {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 5px;
-  border-radius: 3px;
-  height: 22px;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  padding: 2px 5px !important;
+  border-radius: 4px;
+  height: 21px !important;
+  line-height: 1 !important;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  transition: all 0.12s ease;
 }
 .btn-act:hover {
   background: var(--bg-card-hover);
@@ -854,58 +930,6 @@ body[data-view="compact"] .row-actions {
 .btn-copy-hs:hover {
   background: rgba(0, 210, 106, 0.15);
   color: var(--accent);
-}
-
-/* Karty */
-body[data-view="cards"] .alert-item {
-  display: flex;
-  flex-direction: column;
-  padding: 12px 14px;
-  border-radius: 8px;
-  gap: 8px;
-}
-
-body[data-view="cards"] .alert-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-body[data-view="cards"] .header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-body[data-view="cards"] .row-host { font-size: 13px; font-weight: 700; }
-body[data-view="cards"] .row-service {
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-body[data-view="cards"] .row-status { display: flex; align-items: center; gap: 5px; }
-
-body[data-view="cards"] .row-output {
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-main);
-  background: var(--output-bg);
-  padding: 8px 10px;
-  border-radius: 5px;
-  border: 1px solid var(--border-subtle);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-body[data-view="cards"] .row-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: 2px;
 }
 
 /* Status colors */
@@ -949,11 +973,6 @@ body[data-view="cards"] .row-actions {
 }
 .alert-item.locally-done:hover { background: var(--done-bg-hover) !important; }
 
-.alert-item.state-2.locally-done { border-left-color: var(--crit) !important; }
-.alert-item.state-1.locally-done { border-left-color: var(--warn) !important; }
-.alert-item.state-3.locally-done { border-left-color: var(--unknown) !important; }
-.alert-item.karma-card.locally-done { border-left-color: var(--karma-color) !important; }
-
 .karma-host-text { color: var(--karma-color) !important; }
 .service-text { color: #1971c2; }
 body[data-theme="obsidian"] .service-text,
@@ -987,6 +1006,23 @@ body[data-hide-status="true"] .badge.unknown {
   display: none !important;
 }
 
+/* ZNACZNIK D DLA SUPPORTU D */
+.badge-support-d {
+  background: #ffd43b !important;
+  color: #111 !important;
+  font-weight: 900 !important;
+  font-size: 9px !important;
+  padding: 1px 4px !important;
+  border-radius: 3px !important;
+  margin-left: 4px;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+
+body[data-hide-support-d="true"] .badge-support-d {
+  display: none !important;
+}
+
 .handover-tag {
   display: inline-flex;
   align-items: center;
@@ -1005,11 +1041,6 @@ body[data-hide-status="true"] .badge.unknown {
   border-color: #ffd43b;
   text-decoration: underline;
 }
-body[data-theme="daylight"] .handover-tag {
-  color: #b17900;
-  background: #fff9db;
-  border-color: #ffe066;
-}
 
 .child-row { margin-left: 18px; position: relative; }
 .child-row::before {
@@ -1025,31 +1056,61 @@ body[data-theme="daylight"] .handover-tag {
 /* Bulk Action Dock */
 .bulk-action-bar {
   position: fixed;
-  bottom: 22px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-surface);
   border: 1px solid var(--accent);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
-  padding: 8px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.75);
+  padding: 6px 14px;
   border-radius: 30px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   z-index: 999;
   backdrop-filter: blur(8px);
-  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 98vw;
+  white-space: nowrap !important;
 }
 .bulk-action-bar.hidden { display: none; }
 
-@keyframes slideUp {
-  from { transform: translate(-50%, 20px); opacity: 0; }
-  to { transform: translate(-50%, 0); opacity: 1; }
+.bulk-info {
+  display: flex;
+  align-items: center;
+  white-space: nowrap !important;
+  flex-shrink: 0;
+}
+.bulk-info span { font-size: 11px; color: var(--text-muted); }
+.bulk-info strong { color: var(--accent); font-size: 12px; margin-left: 2px; }
+
+.bulk-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
 }
 
-.bulk-info span { font-size: 12px; color: var(--text-muted); }
-.bulk-info strong { color: var(--accent); font-size: 13px; }
-.bulk-buttons { display: flex; align-items: center; gap: 8px; }
+.bulk-buttons .btn {
+  display: inline-flex;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 9px;
+  height: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 5px;
+}
+
+.bulk-buttons .btn.hidden,
+#btn-bulk-unack.hidden,
+#btn-bulk-remove-dt.hidden {
+  display: none !important;
+}
 
 /* Toast */
 .toast-notification {
@@ -1070,7 +1131,24 @@ body[data-theme="daylight"] .handover-tag {
 }
 .toast-notification.hidden { opacity: 0; transform: translateY(10px); pointer-events: none; }
 
-.dt-time-selector-row { display: flex; gap: 8px; }
+.dt-time-selector-row { display: flex; gap: 8px; align-items: center; }
+.dt-calendar-row { display: flex; flex-direction: column; gap: 4px; }
+
+/* Kalendarz datetime-local */
+input[type="datetime-local"] { color-scheme: dark; }
+body[data-theme="daylight"] input[type="datetime-local"] { color-scheme: light; }
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zM7 12h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2zm-8 4h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: 16px 16px;
+  width: 18px;
+  height: 18px;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
 
 /* Modale */
 .modal-backdrop {
@@ -1114,192 +1192,8 @@ body[data-theme="daylight"] .handover-tag {
 .modal-textarea { height: 110px; font-family: monospace; resize: vertical; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
-.theme-creator-window { width: 520px; }
-.theme-grid-pickers {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  background: var(--bg-surface-elevated);
-  padding: 14px;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-}
-.picker-item { display: flex; flex-direction: column; gap: 6px; }
-.picker-item label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
-.picker-input-wrap { display: flex; align-items: center; gap: 8px; }
-.picker-input-wrap input[type="color"] {
-  -webkit-appearance: none;
-  border: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  cursor: pointer;
-  background: transparent;
-}
-.picker-input-wrap input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-.picker-input-wrap input[type="color"]::-webkit-color-swatch {
-  border: 1px solid var(--border-hover);
-  border-radius: 4px;
-}
-.picker-input-wrap span { font-family: "JetBrains Mono", Consolas, monospace; font-size: 11px; color: var(--text-main); }
-.slack-string-wrap { display: flex; flex-direction: column; gap: 6px; }
-.slack-input-row { display: flex; gap: 8px; }
-#slack-theme-string { font-family: "JetBrains Mono", Consolas, monospace; letter-spacing: 0.3px; }
-
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(120, 120, 120, 0.2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(120, 120, 120, 0.35); }
-/* ==========================================================================
-   NAPRAWA ROZJECHANEGO DOKU MASOWEGO (BRAK ŁAMANIA WIERSZY)
-   ========================================================================== */
-
-.bulk-action-bar {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--bg-surface);
-  border: 1px solid var(--accent);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.75);
-  padding: 6px 14px;
-  border-radius: 30px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  z-index: 999;
-  backdrop-filter: blur(8px);
-  max-width: 98vw;
-  white-space: nowrap !important;
-}
-
-.bulk-info {
-  display: flex;
-  align-items: center;
-  white-space: nowrap !important;
-  flex-shrink: 0;
-}
-
-.bulk-info span {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.bulk-info strong {
-  color: var(--accent);
-  font-size: 12px;
-  margin-left: 2px;
-}
-
-.bulk-buttons {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap !important;
-  white-space: nowrap !important;
-}
-
-.bulk-buttons .btn {
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 5px !important;
-  padding: 4px 9px !important;
-  height: 28px !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  line-height: 1 !important;
-  border-radius: 5px !important;
-}
-
-.bulk-buttons span.bulk-count-num {
-  font-weight: 700;
-}
-
-.dt-time-selector-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.dt-calendar-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* ==========================================================================
-   IKONKA KALENDARZA W KOLORZE TEKSTU DLA DATETIME-LOCAL
-   ========================================================================== */
-input[type="datetime-local"] {
-  color-scheme: dark;
-}
-
-body[data-theme="daylight"] input[type="datetime-local"] {
-  color-scheme: light;
-}
-
-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  background-color: currentColor;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zM7 12h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2zm-8 4h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z'/%3E%3C/svg%3E");
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: 16px 16px;
-  width: 18px;
-  height: 18px;
-  opacity: 0.85;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
-  transform: scale(1.15);
-}
-/* PIGUŁKA METRYKI ACKED */
-.stat-acked {
-  border-color: rgba(134, 142, 150, 0.25);
-}
-
-.stat-acked.has-alerts {
-  background: rgba(108, 117, 125, 0.16) !important;
-  border-color: rgba(173, 181, 189, 0.45) !important;
-  color: #adb5bd !important;
-}
-
-.stat-acked.has-alerts strong {
-  color: #f8f9fa !important;
-}
-
-.stat-acked.has-alerts .stat-indicator {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #adb5bd;
-  box-shadow: 0 0 6px rgba(173, 181, 189, 0.6);
-}
-
-.stat-acked.is-active {
-  box-shadow: 0 0 0 2px #adb5bd, 0 2px 10px rgba(0, 0, 0, 0.45) !important;
-  filter: brightness(1.3) !important;
-  border-color: #f8f9fa !important;
-}
-
-/* ==========================================================================
-   DROPDOWN MENU OPCJI WIDOKU & TWARDE UKRYCIE UNACK W WIDOKU GŁÓWNYM
-   ========================================================================== */
-
-/* Unack z definicji ukryty, pojawia się tylko w widoku ACKED */
-#btn-bulk-unack.hidden {
-  display: none !important;
-}
-
-.dropdown-options-wrap {
-  position: relative;
-  display: inline-block;
-}
-
+/* Dropdown menu Opcji Widoku */
+.dropdown-options-wrap { position: relative; display: inline-block; }
 .btn-options-menu {
   display: inline-flex;
   align-items: center;
@@ -1315,9 +1209,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   color: var(--text-main);
   transition: all 0.15s ease;
 }
-
-.btn-options-menu:hover,
-.btn-options-menu.is-open {
+.btn-options-menu:hover, .btn-options-menu.is-open {
   background: var(--bg-card-hover);
   border-color: var(--border-hover);
 }
@@ -1326,22 +1218,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-hover);
+  background: #111418;
+  border: 1px solid #2b3038;
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75);
   padding: 10px 12px;
-  min-width: 210px;
+  min-width: 230px;
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   animation: dropdownFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
-
-.options-dropdown-panel.hidden {
-  display: none !important;
-}
+.options-dropdown-panel.hidden { display: none !important; }
 
 @keyframes dropdownFadeIn {
   from { opacity: 0; transform: translateY(-4px); }
@@ -1354,7 +1243,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  margin-bottom: 2px;
+  margin-top: 2px;
 }
 
 .dropdown-checkbox-item {
@@ -1368,11 +1257,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   border-radius: 4px;
   transition: background 0.1s;
 }
-
-.dropdown-checkbox-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
+.dropdown-checkbox-item:hover { background: rgba(255, 255, 255, 0.06); }
 .dropdown-checkbox-item input[type="checkbox"] {
   width: 14px;
   height: 14px;
@@ -1380,10 +1265,24 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   accent-color: var(--accent);
 }
 
+.dropdown-select {
+  width: 100%;
+  background: #090b0d;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-main);
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+.dropdown-select:focus { border-color: var(--accent); }
+
 .dropdown-divider {
   height: 1px;
-  background: var(--border-subtle);
-  margin: 4px 0;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 3px 0;
 }
 
 .btn-subtle-danger {
@@ -1401,728 +1300,88 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   gap: 5px;
   transition: all 0.15s ease;
 }
-
 .btn-subtle-danger:hover {
   background: var(--crit-bg);
   border-color: var(--crit);
 }
-/* PIGUŁKA METRYKI DOWNTIME (DT) */
-.stat-dt {
-  border-color: rgba(25, 113, 194, 0.25);
+
+/* ==========================================================================
+   GĘSTOŚĆ WIERSZY (26px / 33px / 42px)
+   ========================================================================== */
+body[data-density="compact"][data-view="compact"] .alert-item {
+  min-height: 26px !important;
+  padding: 1px 8px !important;
+}
+body[data-density="compact"] .btn-act {
+  height: 19px !important;
+  font-size: 9.5px !important;
+  padding: 1px 4px !important;
 }
 
-.stat-dt.has-alerts {
-  background: rgba(25, 113, 194, 0.16) !important;
-  border-color: rgba(51, 154, 240, 0.45) !important;
-  color: #74c0fc !important;
+body[data-density="normal"][data-view="compact"] .alert-item {
+  min-height: 33px !important;
+  padding: 4px 8px !important;
 }
 
-.stat-dt.has-alerts strong {
-  color: #e7f5ff !important;
+body[data-density="spacious"][data-view="compact"] .alert-item {
+  min-height: 42px !important;
+  padding: 8px 10px !important;
 }
-
-.stat-dt.has-alerts .stat-indicator {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #339af0;
-  box-shadow: 0 0 6px rgba(51, 154, 240, 0.6);
-}
-
-.stat-dt.is-active {
-  box-shadow: 0 0 0 2px #339af0, 0 2px 10px rgba(0, 0, 0, 0.45) !important;
-  filter: brightness(1.3) !important;
-  border-color: #74c0fc !important;
+body[data-density="spacious"] .btn-act {
+  height: 26px !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
 }
 
 /* ==========================================================================
-   UPORZĄDKOWANIE PRZYCISKÓW W WIERSZU ALERTU (KOMPAKTOWE, POZIOME, PODPISANE)
+   ROZWIJANE MENU AKCJI ( ⚡ )
    ========================================================================== */
-
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  justify-content: flex-end !important;
-  align-items: center !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-}
-
-.btn-act {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  padding: 2px 6px !important;
-  border-radius: 4px;
-  height: 22px !important;
-  line-height: 1 !important;
-  cursor: pointer;
-  display: inline-flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  transition: all 0.12s ease;
-}
-
-.btn-act:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-main);
-  border-color: var(--border-hover);
-}
-/* ==========================================================================
-   ELASTYCZNA SIATKA WIERSZA: PRZYCISKI NIGDY NIE NACHODZĄ NA TEKST
-   ========================================================================== */
-
-.table-header-row, body[data-view="compact"] .alert-item {
-  display: grid;
-  grid-template-columns: var(--col-check) var(--col-status) var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) max-content !important;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Kolumna błędu/wyjścia natychmiast ucina się wielokropkiem i nie wpływa pod przyciski */
-body[data-view="compact"] .row-output {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-}
-
-/* Kolumna akcji ma dokładnie tyle miejsca, ile potrzebują przyciski */
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  gap: 4px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  z-index: 2;
-}
-
-/* Płaski, zwarty wygląd przycisków w wierszu alertu */
-.btn-act {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  padding: 2px 6px !important;
-  border-radius: 4px;
-  height: 22px !important;
-  line-height: 1 !important;
-  cursor: pointer;
-  display: inline-flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  transition: all 0.12s ease;
-}
-
-.btn-act:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-main);
-  border-color: var(--border-hover);
-}
-
-.col-actions-cell {
-  text-align: right;
-  justify-self: end;
-  padding-right: 4px;
-}
-/* ==========================================================================
-   TWARDA DEFINICJA SIATKI GRID: KOLUMNA AKCJI MA STAŁĄ ZWARTE MIEJSCE
-   ========================================================================== */
-
-.table-header-row, body[data-view="compact"] .alert-item {
-  display: grid;
-  grid-template-columns: var(--col-check) var(--col-status) var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) minmax(355px, max-content) !important;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Kolumna wyjścia nigdy nie wchodzi pod przyciski, kończy się wielokropkiem */
-body[data-view="compact"] .row-output {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-}
-
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-/* PRZYCISKI W WIERSZU: ZWARTE, ZAWSZE W JEDNEJ LINII (ICON + TEXT) */
-.btn-act {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  padding: 2px 5px !important;
-  border-radius: 4px;
-  height: 21px !important;
-  line-height: 1 !important;
-  cursor: pointer;
-  display: inline-flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  transition: all 0.12s ease;
-}
-
-.btn-act:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-main);
-  border-color: var(--border-hover);
-}
-
-.col-actions-cell {
-  text-align: right;
-  justify-self: end;
-  padding-right: 4px;
-}
-
-/* PIGUŁKA METRYKI DOWNTIME (DT) W GÓRNYM PASKU */
-.stat-dt {
-  border-color: rgba(25, 113, 194, 0.25);
-}
-
-.stat-dt.has-alerts {
-  background: rgba(25, 113, 194, 0.18) !important;
-  border-color: rgba(51, 154, 240, 0.45) !important;
-  color: #74c0fc !important;
-}
-
-.stat-dt.has-alerts strong {
-  color: #e7f5ff !important;
-}
-
-.stat-dt.has-alerts .stat-indicator {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #339af0;
-  box-shadow: 0 0 6px rgba(51, 154, 240, 0.6);
-}
-
-.stat-dt.is-active {
-  box-shadow: 0 0 0 2px #339af0, 0 2px 10px rgba(0, 0, 0, 0.45) !important;
-  filter: brightness(1.3) !important;
-  border-color: #74c0fc !important;
-}
-
-/* ==========================================================================
-   TWARDA BLOKADA PRZYCISKÓW W DOLNYM DOKU (BRAK !important NA DISPLAY)
-   ========================================================================== */
-
-.bulk-buttons .btn {
+.actions-dropdown-container {
+  position: relative;
   display: inline-flex;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 9px;
-  height: 28px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  border-radius: 5px;
 }
 
-/* Twarde ukrycie dla przycisków doku */
-.bulk-buttons .btn.hidden,
-#btn-bulk-unack.hidden,
-#btn-bulk-remove-dt.hidden {
-  display: none !important;
-}
-
-/* ==========================================================================
-   TWARDA BLOKADA PRZYCISKÓW W DOLNYM DOKU (BRAK KOLIZJI)
-   ========================================================================== */
-
-.bulk-buttons .btn {
-  display: inline-flex;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 9px;
-  height: 28px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  border-radius: 5px;
-}
-
-/* Klasa .hidden MA ZAWSZE ABSOLUTNY PRIORYTET */
-.bulk-buttons .btn.hidden,
-#btn-bulk-unack.hidden,
-#btn-bulk-remove-dt.hidden {
-  display: none !important;
-}
-
-/* ==========================================================================
-   ODSTĘP I SEPARACJA KOLUMN WIERSZA: PRZYCISKI NIE NACHODZĄ NA TEKST
-   ========================================================================== */
-
-.table-header-row, body[data-view="compact"] .alert-item {
-  display: grid !important;
-  grid-template-columns: var(--col-check) var(--col-status) var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) minmax(360px, max-content) !important;
-  align-items: center !important;
-  gap: 8px !important;
-}
-
-body[data-view="compact"] .row-output {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  padding-right: 6px !important;
-}
-
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-.col-actions-cell {
-  text-align: right;
-  justify-self: end;
-  padding-right: 4px;
-}
-
-/* PLAKIETKA ODLICZANIA CZASU DOWNTIME */
-.badge-dt-active {
-  background: #1864ab !important;
-  color: #d0ebff !important;
-  border: 1px solid rgba(116, 192, 252, 0.4) !important;
-  font-family: "JetBrains Mono", Consolas, monospace !important;
-  font-size: 9px !important;
-}
-
-/* ==========================================================================
-   TWARDA BLOKADA PRZYCISKÓW W DOLNYM DOKU (BRAK !important NA DISPLAY)
-   ========================================================================== */
-
-.bulk-buttons .btn {
-  display: inline-flex;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 9px;
-  height: 28px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  border-radius: 5px;
-}
-
-/* Klasa .hidden MA ZAWSZE ABSOLUTNY PRIORYTET */
-.bulk-buttons .btn.hidden,
-#btn-bulk-unack.hidden,
-#btn-bulk-remove-dt.hidden {
-  display: none !important;
-}
-
-/* ==========================================================================
-   ODSTĘP I SEPARACJA KOLUMN WIERSZA: PRZYCISKI NIE NACHODZĄ NA TEKST
-   ========================================================================== */
-
-.table-header-row, body[data-view="compact"] .alert-item {
-  display: grid !important;
-  grid-template-columns: var(--col-check) 130px var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) minmax(360px, max-content) !important;
-  align-items: center !important;
-  gap: 8px !important;
-}
-
-body[data-view="compact"] .row-output {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  padding-right: 6px !important;
-}
-
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-.col-actions-cell {
-  text-align: right;
-  justify-self: end;
-  padding-right: 4px;
-}
-
-/* SZEROKA, POZIOMA PLAKIETKA ODLICZANIA CZASU DOWNTIME */
-.badge-dt-active {
-  background: #1864ab !important;
-  color: #d0ebff !important;
-  border: 1px solid rgba(116, 192, 252, 0.4) !important;
-  font-family: "JetBrains Mono", Consolas, monospace !important;
+.btn-act-lightning {
+  background: var(--bg-surface-elevated) !important;
+  border: 1px solid #ffd43b !important;
+  color: #ffd43b !important;
+  font-weight: 800 !important;
   font-size: 10px !important;
-  font-weight: 700 !important;
-  white-space: nowrap !important;
-  display: inline-flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 4px !important;
   padding: 2px 7px !important;
-  height: 20px !important;
-  border-radius: 4px !important;
-  flex-shrink: 0 !important;
-}
-
-/* ==========================================================================
-   TWARDA BLOKADA PRZYCISKÓW W DOLNYM DOKU (BRAK !important NA DISPLAY)
-   ========================================================================== */
-
-.bulk-buttons .btn {
+  height: 21px !important;
+  border-radius: 4px;
+  cursor: pointer;
   display: inline-flex;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 9px;
-  height: 28px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  border-radius: 5px;
+  gap: 3px;
+  white-space: nowrap !important;
+}
+.btn-act-lightning:hover {
+  background: rgba(255, 212, 59, 0.18) !important;
 }
 
-/* Klasa .hidden MA ZAWSZE ABSOLUTNY PRIORYTET */
-.bulk-buttons .btn.hidden,
-#btn-bulk-unack.hidden,
-#btn-bulk-remove-dt.hidden {
+.actions-flyout-menu {
+  position: fixed;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hover);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.85);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 99999;
+}
+.actions-flyout-menu.hidden {
   display: none !important;
 }
-
-/* ==========================================================================
-   ODSTĘP I SEPARACJA KOLUMN WIERSZA: PRZYCISKI NIE NACHODZĄ NA TEKST
-   ========================================================================== */
-
-.table-header-row, body[data-view="compact"] .alert-item {
-  display: grid !important;
-  grid-template-columns: var(--col-check) 135px var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) minmax(360px, max-content) !important;
-  align-items: center !important;
-  gap: 8px !important;
-}
-
-body[data-view="compact"] .row-output {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  padding-right: 6px !important;
-}
-
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-.col-actions-cell {
-  text-align: right;
-  justify-self: end;
-  padding-right: 4px;
-}
-
-/* SZEROKA, POZIOMA PLAKIETKA ODLICZANIA CZASU DOWNTIME */
-.badge-dt-active {
-  background: #1864ab !important;
-  color: #d0ebff !important;
-  border: 1px solid rgba(116, 192, 252, 0.4) !important;
-  font-family: "JetBrains Mono", Consolas, monospace !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  white-space: nowrap !important;
-  display: inline-flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 4px !important;
-  padding: 2px 8px !important;
-  min-width: 75px !important;
-  height: 20px !important;
-  border-radius: 4px !important;
-  flex-shrink: 0 !important;
-}
-
-/* ==========================================================================
-   TWARDA BLOKADA PRZYCISKÓW W DOLNYM DOKU (BRAK !important NA DISPLAY)
-   ========================================================================== */
-
-.bulk-buttons .btn {
-  display: inline-flex;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 9px;
-  height: 28px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  border-radius: 5px;
-}
-
-/* Klasa .hidden MA ZAWSZE ABSOLUTNY PRIORYTET */
-.bulk-buttons .btn.hidden,
-#btn-bulk-unack.hidden,
-#btn-bulk-remove-dt.hidden {
-  display: none !important;
-}
-
-/* ==========================================================================
-   ODSTĘP I SEPARACJA KOLUMN WIERSZA: PRZYCISKI NIE NACHODZĄ NA TEKST
-   ========================================================================== */
-
-.table-header-row, body[data-view="compact"] .alert-item {
-  display: grid !important;
-  grid-template-columns: var(--col-check) 140px var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) minmax(360px, max-content) !important;
-  align-items: center !important;
-  gap: 8px !important;
-}
-
-body[data-view="compact"] .row-output {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  padding-right: 6px !important;
-}
-
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-.col-actions-cell {
-  text-align: right;
-  justify-self: end;
-  padding-right: 4px;
-}
-
-/* ==========================================================================
-   WIDŻET POSTĘPU DOWNTIME W WIERSZU (PASEK ŁADOWANIA INSPIROWANY ICINGA DB)
-   ========================================================================== */
-.dt-progress-badge {
-  position: relative !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  background: #0d1b2a !important;
-  border: 1px solid rgba(0, 210, 106, 0.45) !important;
-  border-radius: 4px !important;
-  height: 20px !important;
-  min-width: 82px !important;
-  overflow: hidden !important;
-  user-select: none !important;
-  vertical-align: middle !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
-  flex-shrink: 0 !important;
-}
-
-.dt-progress-bar {
-  position: absolute !important;
-  left: 0 !important;
-  top: 0 !important;
-  bottom: 0 !important;
-  background: linear-gradient(90deg, rgba(0, 210, 106, 0.3), rgba(0, 210, 106, 0.55)) !important;
-  border-right: 2px solid #00d26a !important;
-  box-shadow: 0 0 6px rgba(0, 210, 106, 0.6) !important;
-  transition: width 0.3s ease !important;
-  z-index: 1 !important;
-  pointer-events: none !important;
-}
-
-.dt-progress-content {
-  position: relative !important;
-  z-index: 2 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 4px !important;
+.actions-flyout-menu .btn-act {
+  justify-content: flex-start !important;
   width: 100% !important;
-  padding: 0 6px !important;
-  font-family: "JetBrains Mono", Consolas, monospace !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  color: #e6fcf5 !important;
-  white-space: nowrap !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9) !important;
+  height: 24px !important;
 }
 
-.dt-progress-icon {
-  font-size: 10px !important;
-}
-
-/* ==========================================================================
-   TWARDA BLOKADA PRZYCISKÓW W DOLNYM DOKU (BRAK !important NA DISPLAY)
-   ========================================================================== */
-
-.bulk-buttons .btn {
-  display: inline-flex;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 9px;
-  height: 28px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  border-radius: 5px;
-}
-
-/* Klasa .hidden MA ZAWSZE ABSOLUTNY PRIORYTET */
-.bulk-buttons .btn.hidden,
-#btn-bulk-unack.hidden,
-#btn-bulk-remove-dt.hidden {
-  display: none !important;
-}
-
-/* ==========================================================================
-   ODSTĘP I SEPARACJA KOLUMN WIERSZA: PRZYCISKI NIE NACHODZĄ NA TEKST
-   ========================================================================== */
-
-.table-header-row, body[data-view="compact"] .alert-item {
-  display: grid !important;
-  grid-template-columns: var(--col-check) 140px var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) minmax(360px, max-content) !important;
-  align-items: center !important;
-  gap: 8px !important;
-}
-
-body[data-view="compact"] .row-output {
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  padding-right: 6px !important;
-}
-
-body[data-view="compact"] .row-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  gap: 3px !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-.col-actions-cell {
-  text-align: right;
-  justify-self: end;
-  padding-right: 4px;
-}
-
-/* ==========================================================================
-   WIDŻET POSTĘPU DOWNTIME W WIERSZU (PASEK ŁADOWANIA INSPIROWANY ICINGA DB)
-   ========================================================================== */
-.dt-progress-badge {
-  position: relative !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  background: #0d1b2a !important;
-  border: 1px solid rgba(0, 210, 106, 0.45) !important;
-  border-radius: 4px !important;
-  height: 20px !important;
-  min-width: 82px !important;
-  overflow: hidden !important;
-  user-select: none !important;
-  vertical-align: middle !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
-  flex-shrink: 0 !important;
-}
-
-.dt-progress-bar {
-  position: absolute !important;
-  left: 0 !important;
-  top: 0 !important;
-  bottom: 0 !important;
-  background: linear-gradient(90deg, rgba(0, 210, 106, 0.25), rgba(0, 210, 106, 0.55)) !important;
-  border-right: 2px solid #00d26a !important;
-  box-shadow: 0 0 6px rgba(0, 210, 106, 0.6) !important;
-  transition: width 0.3s ease !important;
-  z-index: 1 !important;
-  pointer-events: none !important;
-}
-
-.dt-progress-content {
-  position: relative !important;
-  z-index: 2 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 4px !important;
-  width: 100% !important;
-  padding: 0 6px !important;
-  font-family: "JetBrains Mono", Consolas, monospace !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  color: #e6fcf5 !important;
-  white-space: nowrap !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9) !important;
-}
-
-.dt-progress-icon {
-  font-size: 10px !important;
-}
-
-/* ODBLOKOWANIE RESIZERA MIĘDZY STATUS A CZAS */
-.table-header-row, body[data-view="compact"] .alert-item {
-  grid-template-columns: var(--col-check) var(--col-status, 140px) var(--col-time) var(--col-host) var(--col-service) minmax(80px, 1fr) minmax(360px, max-content) !important;
-}
-
-body[data-view="compact"] .row-status {
-  min-width: 0 !important;
-  overflow: hidden !important;
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(120, 120, 120, 0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(120, 120, 120, 0.35); }

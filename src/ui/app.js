@@ -2,7 +2,7 @@
 let pendingAck = null;
 let activeSourceFilter = 'all';
 
-// Stan filtru z pigułek metryk ('crit' | 'warn' | 'unknown' | 'acked' | 'dt' | 'karma' | 'icinga')
+// Stan filtru z pigułek metryk ('crit' | 'warn' | 'unknown' | 'acked' | 'dt' | 'dt-d' | 'karma' | 'icinga')
 let activeMetricFilter = null;
 
 // Stan zaznaczenia i multiselect
@@ -16,7 +16,7 @@ let dragStartIndex = -1;
 let dragMode = 'select';
 
 // -------------------------------------------------------------
-// TRZY CAŁKOWICIE AUTONOMICZNE PROFILE SZEROKOŚCI KOLUMN
+// PROFILE SZEROKOŚCI KOLUMN
 // -------------------------------------------------------------
 let colWidthsMain = {
   status: 105,
@@ -58,6 +58,11 @@ const hideDoneCheckbox = document.getElementById('hide-done-checkbox');
 const hideSourceCheckbox = document.getElementById('hide-source-checkbox');
 const hideStatusCheckbox = document.getElementById('hide-status-checkbox');
 const groupHostsCheckbox = document.getElementById('group-hosts-checkbox');
+const collapseActionsCheckbox = document.getElementById('collapse-actions-checkbox');
+const hideSupportDCheckbox = document.getElementById('hide-support-d-checkbox');
+const densitySelect = document.getElementById('density-select');
+const fontScaleSelect = document.getElementById('font-scale-select');
+
 const tabButtons = document.querySelectorAll('.tab-btn');
 const themeSelect = document.getElementById('theme-select');
 const btnOpenCustomTheme = document.getElementById('btn-open-custom-theme');
@@ -131,6 +136,8 @@ const statAckedVal = document.getElementById('stat-acked-val');
 const statAckedWrap = document.getElementById('stat-acked-wrap');
 const statDtVal = document.getElementById('stat-dt-val');
 const statDtWrap = document.getElementById('stat-dt-wrap');
+const statDtDVal = document.getElementById('stat-dt-d-val');
+const statDtDWrap = document.getElementById('stat-dt-d-wrap');
 const statKarmaVal = document.getElementById('stat-karma-val');
 const statKarmaWrap = document.getElementById('stat-karma-wrap');
 const statIcingaVal = document.getElementById('stat-icinga-val');
@@ -144,6 +151,32 @@ const btnImportHandover = document.getElementById('btn-import-handover');
 const btnExportHandover = document.getElementById('btn-export-handover');
 const btnCopyAgainHandover = document.getElementById('btn-copy-again-handover');
 const btnCloseExportHandover = document.getElementById('btn-close-export-handover');
+
+// -------------------------------------------------------------
+// LOGIKA OKNA CZASOWEGO SUPPORT D (17:00 - 07:00)
+// -------------------------------------------------------------
+function isSupportDWindow() {
+  const h = new Date().getHours();
+  return (h >= 17 || h < 7);
+}
+
+function isAlertInDtD(a) {
+  if (!a.isSupportD) return false;
+  if (!isSupportDWindow()) return false;
+  if (!a.inDowntime) return false;
+  if (a.downtimeEndMs && a.downtimeEndMs <= Date.now()) return false;
+  return true;
+}
+
+function isAlertInStandardDt(a) {
+  if (isAlertInDtD(a)) return false;
+  if (a.isSupportD && !isSupportDWindow() && a.downtimeComment && /support\s*d/i.test(a.downtimeComment)) {
+    return false;
+  }
+  if (!a.inDowntime) return false;
+  if (a.downtimeEndMs && a.downtimeEndMs <= Date.now()) return false;
+  return true;
+}
 
 // -------------------------------------------------------------
 // WCZYTYWANIE I ZAPIS TRZECH NIEZALEŻNYCH ZESTAWÓW SZEROKOŚCI
@@ -191,8 +224,10 @@ function applyColumnWidths() {
     document.head.appendChild(styleTag);
   }
 
-  const isDtView = (activeMetricFilter === 'dt');
+  const isDtView = (activeMetricFilter === 'dt' || activeMetricFilter === 'dt-d');
   const isAckedView = (activeMetricFilter === 'acked');
+  const isActionsCollapsed = document.body.getAttribute('data-collapse-actions') === 'true';
+  const actionsColDef = isActionsCollapsed ? '85px' : 'minmax(340px, max-content)';
 
   const baseSharedStyles = `
     .table-header-row > div {
@@ -338,14 +373,14 @@ function applyColumnWidths() {
 
     styleTag.innerHTML = `
       ${baseSharedStyles}
-      :root, .table-header-row, body[data-view="compact"] .alert-item {
+      html body .table-header-row, html body[data-view="compact"] .alert-item {
         --col-status: ${wStatus}px;
         --col-dt-time: ${wDtTime}px;
         --col-time: ${wTime}px;
         --col-host: ${wHost}px;
         --col-service: ${wService}px;
         --col-dt-comment: ${wDtComment}px;
-        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-dt-time) var(--col-time) var(--col-host) var(--col-service) var(--col-dt-comment) minmax(100px, 1fr) minmax(280px, max-content) !important;
+        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-dt-time) var(--col-time) var(--col-host) var(--col-service) var(--col-dt-comment) minmax(100px, 1fr) ${actionsColDef} !important;
       }
     `;
   } else if (isAckedView) {
@@ -357,13 +392,13 @@ function applyColumnWidths() {
 
     styleTag.innerHTML = `
       ${baseSharedStyles}
-      :root, .table-header-row, body[data-view="compact"] .alert-item {
+      html body .table-header-row, html body[data-view="compact"] .alert-item {
         --col-status: ${wStatus}px;
         --col-time: ${wTime}px;
         --col-host: ${wHost}px;
         --col-service: ${wService}px;
         --col-ack-comment: ${wAckComment}px;
-        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-time) var(--col-host) var(--col-service) var(--col-ack-comment) minmax(100px, 1fr) minmax(280px, max-content) !important;
+        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-time) var(--col-host) var(--col-service) var(--col-ack-comment) minmax(100px, 1fr) ${actionsColDef} !important;
       }
     `;
   } else {
@@ -374,12 +409,12 @@ function applyColumnWidths() {
 
     styleTag.innerHTML = `
       ${baseSharedStyles}
-      :root, .table-header-row, body[data-view="compact"] .alert-item {
+      html body .table-header-row, html body[data-view="compact"] .alert-item {
         --col-status: ${wStatus}px;
         --col-time: ${wTime}px;
         --col-host: ${wHost}px;
         --col-service: ${wService}px;
-        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-time) var(--col-host) var(--col-service) minmax(100px, 1fr) minmax(340px, max-content) !important;
+        grid-template-columns: var(--col-check, 32px) var(--col-status) var(--col-time) var(--col-host) var(--col-service) minmax(100px, 1fr) ${actionsColDef} !important;
       }
     `;
   }
@@ -390,7 +425,7 @@ function renderTableHeader() {
   const headerRow = document.querySelector('.table-header-row');
   if (!headerRow) return;
 
-  const isDtView = (activeMetricFilter === 'dt');
+  const isDtView = (activeMetricFilter === 'dt' || activeMetricFilter === 'dt-d');
   const isAckedView = (activeMetricFilter === 'acked');
 
   if (isDtView) {
@@ -532,7 +567,7 @@ function initColumnResizers() {
     const colName = resizer.getAttribute('data-col');
     if (!colName) return;
 
-    const isDtView = (activeMetricFilter === 'dt');
+    const isDtView = (activeMetricFilter === 'dt' || activeMetricFilter === 'dt-d');
     const isAckedView = (activeMetricFilter === 'acked');
 
     let widthsObj = colWidthsMain;
@@ -579,25 +614,12 @@ function setupOptionsMenu() {
   const btnOptions = 
     document.getElementById('btn-toggle-options-menu') ||
     document.getElementById('btn-options') ||
-    document.getElementById('options-btn') ||
-    document.getElementById('options-toggle') ||
-    document.querySelector('.options-dropdown-btn') ||
-    document.querySelector('.btn-options') ||
-    document.querySelector('.dropdown-options-wrap button') ||
-    document.querySelector('.options-dropdown button') ||
-    Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('Opcje widoku'));
+    document.querySelector('.btn-options-menu');
 
   const optionsPanel = 
     document.getElementById('options-dropdown-menu') ||
     document.getElementById('options-dropdown-panel') ||
-    document.getElementById('options-dropdown') ||
-    document.getElementById('options-menu') ||
-    document.querySelector('.options-dropdown-panel') ||
-    document.querySelector('.options-dropdown-menu') ||
-    document.querySelector('.dropdown-options-menu') ||
-    document.querySelector('.dropdown-options-panel') ||
-    (btnOptions && btnOptions.parentElement && btnOptions.parentElement.querySelector('div:not(.col-resizer)')) ||
-    (btnOptions && btnOptions.nextElementSibling);
+    document.querySelector('.options-dropdown-panel');
 
   if (!btnOptions || !optionsPanel) return;
 
@@ -657,7 +679,7 @@ function formatDuration(ms) {
 }
 
 function formatRemainingDtTime(endMs) {
-  if (!endMs || isNaN(endMs)) return '0m left';
+  if (!endMs || isNaN(endMs)) return 'aktywne';
   const diff = endMs - Date.now();
   if (diff <= 0) return '0m left';
   const min = Math.floor(diff / 60000);
@@ -959,6 +981,22 @@ function initSettings() {
   const groupHosts = localStorage.getItem('opshub_group_hosts') === 'true';
   if (groupHostsCheckbox) groupHostsCheckbox.checked = groupHosts;
 
+  const collapseActions = localStorage.getItem('opshub_collapse_actions') === 'true';
+  if (collapseActionsCheckbox) collapseActionsCheckbox.checked = collapseActions;
+  document.body.setAttribute('data-collapse-actions', collapseActions ? 'true' : 'false');
+
+  const hideSupportD = localStorage.getItem('opshub_hide_support_d') === 'true';
+  if (hideSupportDCheckbox) hideSupportDCheckbox.checked = hideSupportD;
+  document.body.setAttribute('data-hide-support-d', hideSupportD ? 'true' : 'false');
+
+  const savedDensity = localStorage.getItem('opshub_density') || 'normal';
+  if (densitySelect) densitySelect.value = savedDensity;
+  document.body.setAttribute('data-density', savedDensity);
+
+  const savedFontScale = localStorage.getItem('opshub_font_scale') || '100';
+  if (fontScaleSelect) fontScaleSelect.value = savedFontScale;
+  document.documentElement.style.setProperty('--app-font-scale', (parseInt(savedFontScale, 10) / 100));
+
   initColumnResizers();
 }
 
@@ -1002,6 +1040,40 @@ if (groupHostsCheckbox) {
   });
 }
 
+if (collapseActionsCheckbox) {
+  collapseActionsCheckbox.addEventListener('change', (e) => {
+    const val = e.target.checked;
+    document.body.setAttribute('data-collapse-actions', val ? 'true' : 'false');
+    localStorage.setItem('opshub_collapse_actions', val ? 'true' : 'false');
+    applyColumnWidths();
+    renderAlerts();
+  });
+}
+
+if (hideSupportDCheckbox) {
+  hideSupportDCheckbox.addEventListener('change', (e) => {
+    const val = e.target.checked;
+    document.body.setAttribute('data-hide-support-d', val ? 'true' : 'false');
+    localStorage.setItem('opshub_hide_support_d', val ? 'true' : 'false');
+  });
+}
+
+if (densitySelect) {
+  densitySelect.addEventListener('change', (e) => {
+    const val = e.target.value;
+    document.body.setAttribute('data-density', val);
+    localStorage.setItem('opshub_density', val);
+  });
+}
+
+if (fontScaleSelect) {
+  fontScaleSelect.addEventListener('change', (e) => {
+    const val = e.target.value;
+    document.documentElement.style.setProperty('--app-font-scale', (parseInt(val, 10) / 100));
+    localStorage.setItem('opshub_font_scale', val);
+  });
+}
+
 function matchesSearchQuery(item, query) {
   if (!query) return true;
   const rawCleanHost = String(item.host || '').replace(/^\[KARMA\]\s*/, '');
@@ -1035,17 +1107,24 @@ function matchesSearchQuery(item, query) {
   return true;
 }
 
+// TELEMETRIA: ŚCIŚLE ROZDZIELONE DT ORAZ DT D
 function updateTelemetry(alerts) {
   let crit = 0;
   let warn = 0;
   let unknown = 0;
   let acked = 0;
   let dt = 0;
+  let dtD = 0;
   let karma = 0;
   let icinga = 0;
 
   (alerts || []).forEach(a => {
-    if (a.inDowntime) {
+    const inDtD = isAlertInDtD(a);
+    const inStdDt = isAlertInStandardDt(a);
+
+    if (inDtD) {
+      dtD++;
+    } else if (inStdDt) {
       dt++;
     } else if (a.acknowledged) {
       acked++;
@@ -1055,7 +1134,7 @@ function updateTelemetry(alerts) {
       else if (a.state === 3) unknown++;
     }
 
-    if (!a.acknowledged && !a.inDowntime) {
+    if (!a.acknowledged && !inDtD && !inStdDt) {
       if (a.isKarma) karma++;
       else icinga++;
     }
@@ -1066,6 +1145,7 @@ function updateTelemetry(alerts) {
   if (statUnknownVal) statUnknownVal.innerText = unknown;
   if (statAckedVal) statAckedVal.innerText = acked;
   if (statDtVal) statDtVal.innerText = dt;
+  if (statDtDVal) statDtDVal.innerText = dtD;
   if (statKarmaVal) statKarmaVal.innerText = karma;
   if (statIcingaVal) statIcingaVal.innerText = icinga;
 
@@ -1074,6 +1154,7 @@ function updateTelemetry(alerts) {
   if (statUnknownWrap) statUnknownWrap.classList.toggle('has-alerts', unknown > 0);
   if (statAckedWrap) statAckedWrap.classList.toggle('has-alerts', acked > 0);
   if (statDtWrap) statDtWrap.classList.toggle('has-alerts', dt > 0);
+  if (statDtDWrap) statDtDWrap.classList.toggle('has-alerts', dtD > 0);
 }
 
 function setMetricFilter(filterName) {
@@ -1094,6 +1175,7 @@ function updateMetricPillVisuals() {
   if (statUnknownWrap) statUnknownWrap.classList.toggle('is-active', activeMetricFilter === 'unknown');
   if (statAckedWrap) statAckedWrap.classList.toggle('is-active', activeMetricFilter === 'acked');
   if (statDtWrap) statDtWrap.classList.toggle('is-active', activeMetricFilter === 'dt');
+  if (statDtDWrap) statDtDWrap.classList.toggle('is-active', activeMetricFilter === 'dt-d');
   if (statKarmaWrap) statKarmaWrap.classList.toggle('is-active', activeMetricFilter === 'karma');
   if (statIcingaWrap) statIcingaWrap.classList.toggle('is-active', activeMetricFilter === 'icinga');
 }
@@ -1103,6 +1185,7 @@ if (statWarnWrap) statWarnWrap.addEventListener('click', () => setMetricFilter('
 if (statUnknownWrap) statUnknownWrap.addEventListener('click', () => setMetricFilter('unknown'));
 if (statAckedWrap) statAckedWrap.addEventListener('click', () => setMetricFilter('acked'));
 if (statDtWrap) statDtWrap.addEventListener('click', () => setMetricFilter('dt'));
+if (statDtDWrap) statDtDWrap.addEventListener('click', () => setMetricFilter('dt-d'));
 if (statKarmaWrap) statKarmaWrap.addEventListener('click', () => setMetricFilter('karma'));
 if (statIcingaWrap) statIcingaWrap.addEventListener('click', () => setMetricFilter('icinga'));
 
@@ -1130,7 +1213,7 @@ function updateBulkBarUI(visibleItemsCount) {
   }
 
   const isAckedView = (activeMetricFilter === 'acked');
-  const isDtView = (activeMetricFilter === 'dt');
+  const isDtView = (activeMetricFilter === 'dt' || activeMetricFilter === 'dt-d');
 
   if (btnBulkUnack) {
     btnBulkUnack.classList.toggle('hidden', !isAckedView);
@@ -1179,6 +1262,27 @@ function syncDomSelectionVisuals() {
   updateBulkBarUI(currentlyRenderedAlerts.length);
 }
 
+// ROZWIJANE MENU AKCJI ⚡
+window.toggleRowActionsMenu = function (key, e) {
+  e.stopPropagation();
+  const flyout = document.getElementById(`actions-flyout-${key}`);
+  if (!flyout) return;
+
+  const isHidden = flyout.classList.contains('hidden');
+  document.querySelectorAll('.actions-flyout-menu').forEach(m => m.classList.add('hidden'));
+
+  if (isHidden) {
+    flyout.classList.remove('hidden');
+    const rect = e.target.getBoundingClientRect();
+    flyout.style.top = `${rect.bottom + 4}px`;
+    flyout.style.left = `${Math.max(10, rect.right - 140)}px`;
+  }
+};
+
+window.addEventListener('click', () => {
+  document.querySelectorAll('.actions-flyout-menu').forEach(m => m.classList.add('hidden'));
+});
+
 let currentlyRenderedAlerts = [];
 
 function renderAlerts() {
@@ -1190,7 +1294,9 @@ function renderAlerts() {
     const isGrouped = groupHostsCheckbox?.checked || false;
     const isCompact = document.body.getAttribute('data-view') === 'compact';
     const isDtView = (activeMetricFilter === 'dt');
+    const isDtDView = (activeMetricFilter === 'dt-d');
     const isAckedView = (activeMetricFilter === 'acked');
+    const isActionsCollapsed = document.body.getAttribute('data-collapse-actions') === 'true';
 
     renderTableHeader();
     applyColumnWidths();
@@ -1201,12 +1307,17 @@ function renderAlerts() {
       if (activeSourceFilter === 'karma' && !item.isKarma) return false;
       if (activeSourceFilter === 'icinga' && item.isKarma) return false;
 
-      if (activeMetricFilter === 'dt') {
-        if (!item.inDowntime) return false;
-      } else if (activeMetricFilter === 'acked') {
-        if (!item.acknowledged || item.inDowntime) return false;
+      const inDtD = isAlertInDtD(item);
+      const inStdDt = isAlertInStandardDt(item);
+
+      if (isDtDView) {
+        if (!inDtD) return false;
+      } else if (isDtView) {
+        if (!inStdDt) return false;
+      } else if (isAckedView) {
+        if (!item.acknowledged || inDtD || inStdDt) return false;
       } else {
-        if (item.acknowledged || item.inDowntime) return false;
+        if (item.acknowledged || inDtD || inStdDt) return false;
 
         if (activeMetricFilter === 'crit' && item.state !== 2) return false;
         if (activeMetricFilter === 'warn' && item.state !== 1) return false;
@@ -1243,12 +1354,15 @@ function renderAlerts() {
     if (filtered.length === 0) {
       let emptyTitle = 'Środowisko stabilne';
       let emptyDesc = 'Brak aktywnych alertów spełniających wybrane kryteria.';
-      if (activeMetricFilter === 'acked') {
+      if (isAckedView) {
         emptyTitle = 'Brak potwierdzonych alertów';
         emptyDesc = 'Wszystkie potwierdzone problemy zostały rozwiązane lub zdjęto z nich Ack.';
-      } else if (activeMetricFilter === 'dt') {
+      } else if (isDtView) {
         emptyTitle = 'Brak alertów w Downtime';
         emptyDesc = 'Żaden serwis nie znajduje się obecnie w zaplanowanym oknie prac.';
+      } else if (isDtDView) {
+        emptyTitle = 'Brak alertów w DT D';
+        emptyDesc = 'Żaden host z grupy Support D nie znajduje się obecnie w oknie prac (17:00 - 07:00).';
       }
 
       container.innerHTML = `
@@ -1263,7 +1377,7 @@ function renderAlerts() {
     }
 
     let itemsToRender = [];
-    if (isGrouped) {
+    if (isGrouped || isDtDView) {
       const groups = new Map();
       filtered.forEach(item => {
         const h = String(item.host);
@@ -1327,7 +1441,6 @@ function renderAlerts() {
         stateBadgeClass = 'unknown'; stateBadgeText = 'UNKNOWN';
       }
 
-      // WIDŻET PASEK POSTĘPU DT (POKAZYWANY TYLKO W WIDOKU DT)
       let dtBadgeHtml = '';
       if (a.inDowntime) {
         const now = Date.now();
@@ -1391,18 +1504,32 @@ function renderAlerts() {
         </button>
       `;
 
+      let renderedActionsHtml = actionsHtml;
+      if (isActionsCollapsed) {
+        renderedActionsHtml = `
+          <div class="actions-dropdown-container">
+            <button class="btn-act-lightning" onclick="event.stopPropagation(); window.toggleRowActionsMenu('${escapeJs(a.key)}', event)" title="Otwórz menu akcji">
+              ⚡ Akcje ▾
+            </button>
+            <div id="actions-flyout-${escapeHtml(a.key)}" class="actions-flyout-menu hidden">
+              ${actionsHtml}
+            </div>
+          </div>
+        `;
+      }
+
       const noteTagHtml = a.localNote ? `
         <span class="handover-tag" onclick="event.stopPropagation(); copyToClipboard('${escapeJs(a.localNote)}', 'notatkę')" title="Kliknij, aby skopiować notatkę">
           📌 ${escapeHtml(a.localNote)}
         </span>
       ` : '';
 
+      const supportDTag = a.isSupportD ? `<span class="badge badge-support-d" title="Support D (17:00 - 07:00)">D</span>` : '';
       const dtCommentVal = a.downtimeComment || 'Brak komentarza';
       const ackCommentVal = a.ackComment || 'Brak komentarza';
 
       if (isCompact) {
-        if (isDtView) {
-          // UKŁAD 9 KOLUMN W WIDOKU DT
+        if (isDtView || isDtDView) {
           return `
             <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
               <div class="row-check">
@@ -1413,7 +1540,7 @@ function renderAlerts() {
               <div class="row-time" title="Czas trwania awarii">${formatDuration(a.durationMs)}</div>
               <div class="row-host-wrap">
                 <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kliknij, aby skopiować host">
-                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>${supportDTag}
                 </div>
                 ${groupToggleBtn}
               </div>
@@ -1427,11 +1554,10 @@ function renderAlerts() {
               <div class="row-output copyable-cell" data-copy-type="komunikat błędu" data-copy-val="${escapeHtml(a.output)}" title="Kliknij, aby skopiować błąd">
                 ${escapeHtml(a.output)}
               </div>
-              <div class="row-actions">${actionsHtml}</div>
+              <div class="row-actions">${renderedActionsHtml}</div>
             </div>
           `;
         } else if (isAckedView) {
-          // UKŁAD 8 KOLUMN W WIDOKU ACKED (Z KOMENTARZEM Z SERWERA ICINGA DB)
           return `
             <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
               <div class="row-check">
@@ -1441,7 +1567,7 @@ function renderAlerts() {
               <div class="row-time" title="Czas trwania">${formatDuration(a.durationMs)}</div>
               <div class="row-host-wrap">
                 <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kliknij, aby skopiować host">
-                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>${supportDTag}
                 </div>
                 ${groupToggleBtn}
               </div>
@@ -1455,11 +1581,10 @@ function renderAlerts() {
               <div class="row-output copyable-cell" data-copy-type="komunikat błędu" data-copy-val="${escapeHtml(a.output)}" title="Kliknij, aby skopiować błąd">
                 ${escapeHtml(a.output)}
               </div>
-              <div class="row-actions">${actionsHtml}</div>
+              <div class="row-actions">${renderedActionsHtml}</div>
             </div>
           `;
         } else {
-          // UKŁAD 7 KOLUMN DLA WIDOKU GŁÓWNEGO
           return `
             <div class="alert-item ${statusClass} ${doneClass} ${childClass} ${selectedClass}" data-key="${escapeHtml(a.key)}" data-index="${index}">
               <div class="row-check">
@@ -1469,7 +1594,7 @@ function renderAlerts() {
               <div class="row-time" title="Czas trwania">${formatDuration(a.durationMs)}</div>
               <div class="row-host-wrap">
                 <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kliknij, aby skopiować host">
-                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>${supportDTag}
                 </div>
                 ${groupToggleBtn}
               </div>
@@ -1480,7 +1605,7 @@ function renderAlerts() {
               <div class="row-output copyable-cell" data-copy-type="komunikat błędu" data-copy-val="${escapeHtml(a.output)}" title="Kliknij, aby skopiować błąd">
                 ${escapeHtml(a.output)}
               </div>
-              <div class="row-actions">${actionsHtml}</div>
+              <div class="row-actions">${renderedActionsHtml}</div>
             </div>
           `;
         }
@@ -1491,7 +1616,7 @@ function renderAlerts() {
               <div class="header-left">
                 <input type="checkbox" class="row-checkbox" data-key="${escapeHtml(a.key)}" data-index="${index}" ${isSelected ? 'checked' : ''} />
                 <div class="row-host copyable-cell" data-copy-type="host" data-copy-val="${escapeHtml(rawCleanHost)}" title="Kopiuj host">
-                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>
+                  <span class="${a.isKarma ? 'karma-host-text' : ''}">${escapeHtml(a.host)}</span>${supportDTag}
                   ${groupToggleBtn}
                 </div>
                 <div class="row-service copyable-cell" data-copy-type="usługę" data-copy-val="${escapeHtml(a.service)}" title="Kopiuj usługę">
@@ -1509,7 +1634,7 @@ function renderAlerts() {
               ${escapeHtml(a.output)}
             </div>
 
-            <div class="row-actions">${actionsHtml}</div>
+            <div class="row-actions">${renderedActionsHtml}</div>
           </div>
         `;
       }
@@ -1550,7 +1675,7 @@ if (container) {
 
   container.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
-    if (e.target.closest('button, textarea, select, .col-resizer, .handover-tag, .row-dt-comment, .row-ack-comment')) return;
+    if (e.target.closest('button, textarea, select, .col-resizer, .handover-tag, .row-dt-comment, .row-ack-comment, .actions-dropdown-container, .actions-flyout-menu')) return;
 
     const item = e.target.closest('.alert-item');
     if (!item) {
@@ -1607,7 +1732,7 @@ if (container) {
   });
 
   container.addEventListener('click', (e) => {
-    if (e.target.closest('button, textarea, select, .col-resizer, .handover-tag')) return;
+    if (e.target.closest('button, textarea, select, .col-resizer, .handover-tag, .actions-dropdown-container, .actions-flyout-menu')) return;
     if (isDragSelecting) return;
 
     const item = e.target.closest('.alert-item');
@@ -2358,5 +2483,3 @@ window.api?.onAlertsUpdated?.((alerts) => {
   currentAlerts = Array.isArray(alerts) ? alerts : [];
   renderAlerts();
 });
-
-

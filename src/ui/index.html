@@ -5,7 +5,7 @@
   <title>OpsHub — Icinga & Karma</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="obsidian" data-view="compact" data-hide-source="false" data-hide-status="false">
+<body data-theme="obsidian" data-view="compact" data-density="normal" data-hide-source="false" data-hide-status="false" data-collapse-actions="false" data-hide-support-d="false">
   <div class="app-layout">
     
     <!-- Top Bar -->
@@ -18,7 +18,7 @@
         </div>
       </div>
 
-      <!-- Telemetria NOC (Pigułki filtrów wraz z ACKED oraz DT) -->
+      <!-- Telemetria NOC (Pigułki filtrów wraz z ACKED, DT oraz DT D) -->
       <div class="stats-pills">
         <div class="stat-pill stat-crit" id="stat-crit-wrap" title="Kliknij, aby filtrować tylko CRIT">
           <span class="stat-indicator"></span>
@@ -44,6 +44,11 @@
           <span class="stat-indicator"></span>
           <span class="stat-label">DT</span>
           <strong id="stat-dt-val">0</strong>
+        </div>
+        <div class="stat-pill stat-dt-d" id="stat-dt-d-wrap" title="Kliknij, aby wyświetlić alerty Support D w oknie prac (DT D)">
+          <span class="stat-indicator"></span>
+          <span class="stat-label">DT D</span>
+          <strong id="stat-dt-d-val">0</strong>
         </div>
         <div class="stat-pill stat-karma" id="stat-karma-wrap" title="Kliknij, aby filtrować tylko KARMA">
           <span class="stat-label">KARMA</span>
@@ -112,6 +117,14 @@
               <input type="checkbox" id="group-hosts-checkbox" />
               <span>Grupuj wg hosta</span>
             </label>
+            <label class="dropdown-checkbox-item" title="Zwiń przyciski akcji do rozwijanego menu ⚡">
+              <input type="checkbox" id="collapse-actions-checkbox" />
+              <span>Zwiń przyciski akcji ( ⚡ )</span>
+            </label>
+            <label class="dropdown-checkbox-item" title="Ukrywa znacznik D dla hostów Support D">
+              <input type="checkbox" id="hide-support-d-checkbox" />
+              <span>Ukryj znacznik D</span>
+            </label>
             <label class="dropdown-checkbox-item" title="Chowa plakietki [ICINGA] i [KARMA]">
               <input type="checkbox" id="hide-source-checkbox" />
               <span>Ukryj źródła</span>
@@ -124,6 +137,24 @@
               <input type="checkbox" id="hide-done-checkbox" />
               <span>Ukryj wyciszone</span>
             </label>
+
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-header">Gęstość wierszy</div>
+            <select id="density-select" class="dropdown-select">
+              <option value="compact">Ciasna (26px)</option>
+              <option value="normal" selected>Normalna (33px)</option>
+              <option value="spacious">Duża (42px)</option>
+            </select>
+
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-header">Skala czcionki</div>
+            <select id="font-scale-select" class="dropdown-select">
+              <option value="90">Zmniejszona (90%)</option>
+              <option value="100" selected>Domyślna (100%)</option>
+              <option value="112">Powiększona (112%)</option>
+              <option value="125">Duża (125%)</option>
+            </select>
+
             <div class="dropdown-divider"></div>
             <button id="btn-clear-done" class="btn btn-subtle-danger" title="Czyści wyciszenia z pamięci">
               🗑️ Wyczyść wyciszenia (Done)
@@ -133,7 +164,7 @@
       </div>
     </section>
 
-    <!-- Nagłówek tabeli z resizerami Excela -->
+    <!-- Nagłówek tabeli -->
     <div class="table-header-row" id="compact-header">
       <div class="col-cell col-check-cell">
         <input type="checkbox" id="select-all-checkbox" title="Zaznacz / Odznacz wszystkie widoczne" />
@@ -395,12 +426,6 @@
   </div>
 
   <script src="app.js"></script>
-
-  
-<!-- EASTER EGG (USUŃ TĘ LINIJKĘ PRZED PROD) -->
   <script src="ruletka.js"></script>
-</body>
-</html>
-
 </body>
 </html>
